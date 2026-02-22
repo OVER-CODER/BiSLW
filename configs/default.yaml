@@ -1,0 +1,44 @@
+# Model Config
+# Using Stable Diffusion v1.5 VAE (runwayml/stable-diffusion-v1-5)
+model_id: 'runwayml/stable-diffusion-v1-5'
+w_dim: 32          # Watermark dimension
+latent_channels: 4
+hidden_dim: 32     # Hidden dimension
+latent_split: 'dct' # or 'learned'
+
+# Injection Config
+# Balanced for good quality (~35dB) and usable bit accuracy (~70%)
+alpha_l: 0.02    # Low-frequency strength (increased for detectability)
+alpha_h: 0.01    # High-frequency strength (increased for detectability)
+
+# Training Config
+lr: 1.0e-4
+batch_size: 32     # Larger batch for stability
+epochs: 100        # 100 epochs for better convergence
+device: 'mps'      # Use MPS for M2 Mac
+num_workers: 0     # Set to 0 for macOS compatibility
+grad_clip: 1.0
+
+# Loss Weights
+lambda_w: 1.0       # Watermark recovery loss
+lambda_cons: 0.3    # Cross-band consistency
+lambda_latent: 10.0 # Latent preservation (high for quality)
+lambda_robust: 0.1  # Robustness loss (reduced)
+lambda_perceptual: 0.0  # Disabled to save memory
+
+# Quality Targets (realistic for SD v1.5 VAE)
+target_psnr: 30.0   # VAE baseline is ~32 dB at 256x256
+target_ssim: 0.85
+
+# Data
+image_size: 256    # 256x256 for 32x32 latents - best quality/speed balance
+num_train_images: 10000
+
+# Evaluation
+eval_batch_size: 16
+eval_interval: 5
+
+# Checkpointing
+save_interval: 5
+checkpoint_dir: 'checkpoints'
+results_dir: 'results'
