@@ -1,0 +1,170 @@
+{
+  "efficient": {
+    "quality": {
+      "psnr_mean": 19.81679936647415,
+      "psnr_std": 0.9140253942532415,
+      "ssim_mean": 0.6981841593980789,
+      "ssim_std": 0.02845601503640176
+    },
+    "detection": {
+      "latent_acc": 0.86375,
+      "roundtrip_acc": 0.8275
+    },
+    "attacks": {
+      "None": 0.8275,
+      "C.Crop 0.1": 0.5290625,
+      "R.Crop 0.1": 0.5465625,
+      "Resize 0.7": 0.748125,
+      "Rot. 15": 0.5696875,
+      "Blur": 0.6725,
+      "Contr. 2.0": 0.8146875,
+      "Bright. 2.0": 0.755625,
+      "JPEG 70": 0.826875,
+      "Comb.": 0.7184375
+    },
+    "attacks_avg": 0.7009062500000001,
+    "alpha_l": 0.02,
+    "alpha_h": 0.01,
+    "path": "results/efficient_20260222_004718/best_model.pth"
+  },
+  "fast_staged": {
+    "quality": {
+      "psnr_mean": 19.83087738752365,
+      "psnr_std": 0.7377840757047764,
+      "ssim_mean": 0.6852849018573761,
+      "ssim_std": 0.02017546000915197
+    },
+    "detection": {
+      "latent_acc": 0.859375,
+      "roundtrip_acc": 0.8325
+    },
+    "attacks": {
+      "None": 0.8325,
+      "C.Crop 0.1": 0.541875,
+      "R.Crop 0.1": 0.54875,
+      "Resize 0.7": 0.7190625,
+      "Rot. 15": 0.5728125,
+      "Blur": 0.609375,
+      "Contr. 2.0": 0.7809375,
+      "Bright. 2.0": 0.7234375,
+      "JPEG 70": 0.8321875,
+      "Comb.": 0.6665625
+    },
+    "attacks_avg": 0.6827500000000001,
+    "alpha_l": 0.02,
+    "alpha_h": 0.01,
+    "path": "results/fast_staged_20260222_110232/best_roundtrip.pt"
+  },
+  "decoder_ft": {
+    "quality": {
+      "psnr_mean": 18.443067812919615,
+      "psnr_std": 0.6978638142916987,
+      "ssim_mean": 0.5749630808830262,
+      "ssim_std": 0.024853615017437027
+    },
+    "detection": {
+      "latent_acc": 0.8846875,
+      "roundtrip_acc": 0.9175
+    },
+    "attacks": {
+      "None": 0.9175,
+      "C.Crop 0.1": 0.553125,
+      "R.Crop 0.1": 0.5715625,
+      "Resize 0.7": 0.7765625,
+      "Rot. 15": 0.6303125,
+      "Blur": 0.64125,
+      "Contr. 2.0": 0.8640625,
+      "Bright. 2.0": 0.7715625,
+      "JPEG 70": 0.914375,
+      "Comb.": 0.708125
+    },
+    "attacks_avg": 0.73484375,
+    "alpha_l": 0.02,
+    "alpha_h": 0.01,
+    "path": "results/decoder_ft_20260222_212319/best.pt"
+  },
+  "roundtrip": {
+    "quality": {
+      "psnr_mean": 18.54488343000412,
+      "psnr_std": 0.6476207026345399,
+      "ssim_mean": 0.5881249701976776,
+      "ssim_std": 0.02688372057856624
+    },
+    "detection": {
+      "latent_acc": 0.905,
+      "roundtrip_acc": 0.9259375
+    },
+    "attacks": {
+      "None": 0.9259375,
+      "C.Crop 0.1": 0.5575,
+      "R.Crop 0.1": 0.570625,
+      "Resize 0.7": 0.76875,
+      "Rot. 15": 0.6271875,
+      "Blur": 0.6503125,
+      "Contr. 2.0": 0.8440625,
+      "Bright. 2.0": 0.763125,
+      "JPEG 70": 0.92875,
+      "Comb.": 0.7034375
+    },
+    "attacks_avg": 0.73396875,
+    "alpha_l": 0.02,
+    "alpha_h": 0.01,
+    "path": "results/roundtrip_train_20260222_172359/best_roundtrip.pt"
+  },
+  "lightweight": {
+    "quality": {
+      "psnr_mean": 17.501841270923613,
+      "psnr_std": 0.6897055691281259,
+      "ssim_mean": 0.4757850867509842,
+      "ssim_std": 0.023238497303648048
+    },
+    "detection": {
+      "latent_acc": 0.920625,
+      "roundtrip_acc": 0.941875
+    },
+    "attacks": {
+      "None": 0.941875,
+      "C.Crop 0.1": 0.5734375,
+      "R.Crop 0.1": 0.5875,
+      "Resize 0.7": 0.8284375,
+      "Rot. 15": 0.6440625,
+      "Blur": 0.690625,
+      "Contr. 2.0": 0.8990625,
+      "Bright. 2.0": 0.82375,
+      "JPEG 70": 0.9403125,
+      "Comb.": 0.7553125
+    },
+    "attacks_avg": 0.7684375000000001,
+    "alpha_l": 0.02,
+    "alpha_h": 0.01,
+    "path": "results/lightweight_20260222_233224/best.pt"
+  },
+  "finetune_eff": {
+    "quality": {
+      "psnr_mean": 18.051066756248474,
+      "psnr_std": 0.6625879637745155,
+      "ssim_mean": 0.5936790758371353,
+      "ssim_std": 0.01988659139859112
+    },
+    "detection": {
+      "latent_acc": 0.851875,
+      "roundtrip_acc": 0.8778125
+    },
+    "attacks": {
+      "None": 0.8778125,
+      "C.Crop 0.1": 0.5509375,
+      "R.Crop 0.1": 0.59,
+      "Resize 0.7": 0.8534375,
+      "Rot. 15": 0.640625,
+      "Blur": 0.8115625,
+      "Contr. 2.0": 0.853125,
+      "Bright. 2.0": 0.8596875,
+      "JPEG 70": 0.87875,
+      "Comb.": 0.85
+    },
+    "attacks_avg": 0.77659375,
+    "alpha_l": 0.02,
+    "alpha_h": 0.01,
+    "path": "results/finetune_efficient_20260225_181255/best.pt"
+  }
+}
