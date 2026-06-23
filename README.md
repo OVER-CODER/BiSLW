@@ -1,23 +1,38 @@
-# Stable Latent Space Watermarking (SLSW)
+# Bi-Spectral Latent Watermarking (BiSLW)
 
 A latent-space watermarking system for Stable Diffusion v1.5 using DCT-based frequency band splitting.
 
 ## Architecture
 
-- **Dual-band DCT**: Splits latent space into low/high frequency components
-- **Watermark Encoder**: Embeds 32-bit watermark into frequency bands
-- **Watermark Decoder**: Extracts watermark from (potentially attacked) latents
-- **VAE Integration**: Works with SD v1.5 VAE (runwayml/stable-diffusion-v1-5)
+- **Dual-band DCT**: Splits latent space into low/high frequency components.
+- **Watermark Encoder**: Embeds a 32-bit signature key into frequency sub-bands.
+- **Watermark Decoder**: Extracts the signature key from (potentially attacked) latents.
+- **VAE Integration**: Works with the runwayml/stable-diffusion-v1-5 VAE.
 
-## Results
+---
 
-| Model | PSNR | SSIM | Latent Acc | Roundtrip | Attacks |
-|-------|------|------|-----------|-----------|---------|
-| efficient | **37.4 dB** | **0.91** | 82.4% | 55.4% | 53.0% |
-| decoder_ft | 35.8 dB | 0.87 | **84.6%** | 56.8% | 53.4% |
-| lightweight | 34.7 dB | 0.84 | 84.1% | **59.0%** | **54.1%** |
+## Interactive Showcase & Demo
 
-**Targets**: PSNR ≥ 40 dB, SSIM ≥ 0.91, Latent Accuracy > 80%
+We provide two interactive platforms to test, visualize, and benchmark the watermarking system.
+
+### 1. Streamlit Web Demonstration
+A premium graphical user interface that allows uploading images, selecting candidate checkpoints, applying image-space attacks (JPEG, noise, blur, crop, resize, rotate), and verifying watermark recovery with real-time feedback and distortion heatmaps.
+
+#### Launching the App:
+```bash
+pip install streamlit matplotlib
+PYTHONPATH=. streamlit run demo/app.py
+```
+
+### 2. Step-by-Step Jupyter Notebook Walkthrough
+A detailed, cell-by-cell execution walkthrough showcasing model initialization, sub-band splitting, injection, reconstruction, metrics calculations (PSNR & SSIM), and attack simulations.
+
+#### Running the Notebook:
+```bash
+jupyter notebook demo/notebooks/BiSLW_Demo.ipynb
+```
+
+---
 
 ## Project Structure
 
@@ -29,65 +44,59 @@ latent_watermarking/
 │   ├── watermark_encoder.py # Watermark embedding
 │   ├── watermark_decoder.py # Watermark extraction
 │   └── vae_wrapper.py       # SD v1.5 VAE wrapper
-├── attacks/             # Attack implementations
-├── diffusion/           # Diffusion utilities
-├── training/            # Training module
-├── evaluation/          # Evaluation module
-├── scripts/
-│   ├── training/        # Training scripts
-│   ├── evaluation/      # Evaluation scripts
-│   ├── precompute/      # Cache precomputation
-│   └── utils/           # Utility scripts
+├── diffusion/           # Diffusion samplers and UNet handlers
+├── checkpoints/         # Selected best model checkpoint (best.pt)
+├── demo/                # Upgraded Streamlit showcase & CLI inference scripts
+│   ├── examples/        # 5 preloaded sample images
+│   ├── app.py           # Streamlit app
+│   ├── inference.py     # CLI inference script
+│   └── notebooks/       # Jupyter tutorial walk-through
+│       └── BiSLW_Demo.ipynb # Walkthrough notebook
+├── tools/               # Reorganized active scripts and audit modules
+│   ├── attacks/         # Differentiable attack proxies
+│   ├── dataset/         # Mirflickr loaders and trainers
+│   ├── evaluation/      # Metrics and ablation scripts
+│   ├── plotting/        # Result plotting utilities
+│   ├── precompute/      # Precompute scripts
+│   └── utils/           # Downloaders and analysis tools
 ├── configs/             # Configuration files
-├── cache/               # Precomputed latents (not in git)
-├── results/             # Training results (not in git)
-└── best res/            # Best model summaries
+├── cache/               # Precomputed latents (git-ignored)
+└── best res/            # Candidate checkpoints
 ```
+
+---
 
 ## Quick Start
 
 ### 1. Install Dependencies
 
 ```bash
-pip install torch torchvision diffusers pyyaml tqdm pillow
+pip install torch torchvision diffusers pyyaml tqdm pillow matplotlib streamlit
 ```
 
-### 2. Precompute Latents
-
+### 2. Run CLI Inference
 ```bash
-python scripts/precompute/precompute_fast.py --samples 10000 --output cache/latents_10000_256.pt
+PYTHONPATH=. python demo/inference.py --image demo/examples/portrait.jpg --attack jpeg
 ```
 
-### 3. Train Model
-
+### 3. Evaluate Checkpoint
 ```bash
-# Basic training
-python scripts/training/train_efficient.py --epochs 100
-
-# With VAE roundtrip (staged)
-python scripts/training/train_fast_staged.py --epochs 100
-
-# Lightweight augmentation
-python scripts/training/train_lightweight.py --epochs 100
+PYTHONPATH=. python tools/evaluation/quick_eval.py --checkpoint checkpoints/best.pt --samples 10
 ```
 
-### 4. Evaluate
+---
 
-```bash
-python scripts/evaluation/run_comprehensive_eval.py --checkpoint results/*/best.pt
-```
+## Expected Outputs & Validation
 
-## Key Findings
+When evaluating the default checkpoint at `checkpoints/best.pt`:
+- **Image-Space PSNR**: ~17.78 dB (near VAE reconstruction ceiling)
+- **SSIM**: ~0.59
+- **Extraction Bit Accuracy**:
+  - Latent Extraction: ~90.6%
+  - VAE Roundtrip: ~86.9%
+  - Under JPEG-70 Attack: ~83.1%
 
-1. **VAE Limitation**: VAE encoder fundamentally destroys watermark information (~56% roundtrip vs 84% latent)
-2. **Attack Robustness**: Limited to ~54% after image-space attacks due to VAE re-encoding
-3. **Practical Use**: Best for latent-space detection (84%+ accuracy) within diffusion pipelines
-4. **Quality Trade-off**: Lower alpha (0.5x) achieves 38.6 dB PSNR with 80% accuracy
-
-## Model Checkpoints
-
-Model checkpoints are not included in git due to size.
-Train using provided scripts or download from releases.
+---
 
 ## License
 

@@ -87,7 +87,7 @@ def main():
     parser.add_argument('--image', type=str, required=True, help='Path to input image')
     parser.add_argument('--checkpoint', type=str, default='checkpoints/best.pt', help='Path to model checkpoint')
     parser.add_argument('--output-dir', type=str, default='demo/output', help='Output directory')
-    parser.add_argument('--attack', type=str, default='jpeg', choices=['none', 'jpeg', 'noise', 'blur'], help='Attack type')
+    parser.add_argument('--attack', type=str, default='jpeg', choices=['none', 'jpeg', 'noise', 'blur', 'resize', 'crop', 'rotate'], help='Attack type')
     args = parser.parse_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 
@@ -149,6 +149,32 @@ def main():
     elif args.attack == 'blur':
         img_att = F.avg_pool2d(img_wm, 5, stride=1, padding=2)
         print("Applied average blur attack.")
+    elif args.attack == 'resize':
+        # Resize to 0.5x and back
+        B, C, H, W = img_wm.shape
+        down = F.interpolate(img_wm, size=(H//2, W//2), mode='bilinear', align_corners=False)
+        img_att = F.interpolate(down, size=(H, W), mode='bilinear', align_corners=False)
+        print("Applied resize attack (0.5x).")
+    elif args.attack == 'crop':
+        # Crop 10% from edges and resize back
+        B, C, H, W = img_wm.shape
+        crop_h, crop_w = int(H * 0.1), int(W * 0.1)
+        cropped = img_wm[:, :, crop_h:H-crop_h, crop_w:W-crop_w]
+        img_att = F.interpolate(cropped, size=(H, W), mode='bilinear', align_corners=False)
+        print("Applied random border crop (10%).")
+    elif args.attack == 'rotate':
+        # Rotate 10 degrees
+        B, C, H, W = img_wm.shape
+        angle_rad = 10 * np.pi / 180
+        cos_a = np.cos(angle_rad)
+        sin_a = np.sin(angle_rad)
+        theta = torch.tensor([
+            [cos_a, -sin_a, 0],
+            [sin_a, cos_a, 0]
+        ], dtype=img_wm.dtype, device=img_wm.device).unsqueeze(0).expand(B, -1, -1)
+        grid = F.affine_grid(theta, img_wm.size(), align_corners=False)
+        img_att = F.grid_sample(img_wm, grid, mode='bilinear', padding_mode='reflection', align_corners=False)
+        print("Applied rotation attack (10 degrees).")
     else:
         img_att = img_wm
         print("No attack applied.")
