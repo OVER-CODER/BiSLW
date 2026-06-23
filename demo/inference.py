@@ -85,7 +85,7 @@ def main():
     """Main execution entrypoint for CLI inference run."""
     parser = argparse.ArgumentParser()
     parser.add_argument('--image', type=str, required=True, help='Path to input image')
-    parser.add_argument('--checkpoint', type=str, default='checkpoints/best.pt', help='Path to model checkpoint')
+    parser.add_argument('--checkpoint', type=str, default='models/BestModel/best.pt', help='Path to model checkpoint')
     parser.add_argument('--output-dir', type=str, default='demo/output', help='Output directory')
     parser.add_argument('--attack', type=str, default='jpeg', choices=['none', 'jpeg', 'noise', 'blur', 'resize', 'crop', 'rotate'], help='Attack type')
     args = parser.parse_args()

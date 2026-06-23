@@ -189,9 +189,9 @@ def main_streamlit():
     
     # Checkpoint mapping
     checkpoints_map = {
-        "Finetuned Efficient (Default)": "checkpoints/best.pt",
-        "Efficient Baseline (High Quality)": "best res/efficient_20260222_004718/best_model.pth",
-        "Lightweight (High Robustness)": "best res/lightweight_20260222_233224/best.pt"
+        "Finetuned Efficient (Default)": "models/BestModel/best.pt",
+        "Efficient Baseline (High Quality)": "resultmodels/efficient_20260221_164606/best_model.pth",
+        "Lightweight (High Robustness)": "resultmodels/attack_fast_20260224_193821/best.pt"
     }
     
     # Sidebar parameter selectors
