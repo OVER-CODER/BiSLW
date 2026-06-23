@@ -77,7 +77,8 @@ cache/*.pth
 # Model checkpoints (too large for git)
 *.pt
 *.pth
-results/*/
+# results/*/
+resultmodels/*/
 !results/.gitkeep
 
 # Best results folder (contains large model files)
