@@ -1,0 +1,200 @@
+{
+  "config": {
+    "checkpoint": "/Users/overcoder/Code/ag_dw/latent_watermarking/results/efficient_20260222_004718/best_model.pth",
+    "latents": "/Users/overcoder/Code/ag_dw/latent_watermarking/cache/latents_20000_256.pt",
+    "alpha_l": 0.02,
+    "alpha_h": 0.01,
+    "w_dim": 32
+  },
+  "image_quality": {
+    "psnr_mean": 37.40874195098877,
+    "psnr_std": 0.8230435109721329,
+    "ssim_mean": 0.9136113286018371,
+    "ssim_std": 0.012222698396862767,
+    "latent_mse": 0.010690592345781624
+  },
+  "detection": {
+    "bit_accuracy_latent": 0.824375,
+    "bit_accuracy_image": 0.5541666666666667,
+    "auc": 1.0
+  },
+  "robustness": {
+    "JPEG-Q90": {
+      "params": {
+        "quality": 90
+      },
+      "bit_accuracy": 0.564375,
+      "bit_acc_std": 0.07484619646314701,
+      "ber": 0.435625,
+      "ber_std": 0.07484619646314701
+    },
+    "JPEG-Q70": {
+      "params": {
+        "quality": 70
+      },
+      "bit_accuracy": 0.571875,
+      "bit_acc_std": 0.07911868063232602,
+      "ber": 0.428125,
+      "ber_std": 0.07911868063232602
+    },
+    "JPEG-Q50": {
+      "params": {
+        "quality": 50
+      },
+      "bit_accuracy": 0.554375,
+      "bit_acc_std": 0.0744275024772429,
+      "ber": 0.445625,
+      "ber_std": 0.0744275024772429
+    },
+    "JPEG-Q30": {
+      "params": {
+        "quality": 30
+      },
+      "bit_accuracy": 0.545,
+      "bit_acc_std": 0.0721218586837583,
+      "ber": 0.455,
+      "ber_std": 0.0721218586837583
+    },
+    "Noise-\u03c30.01": {
+      "params": {
+        "sigma": 0.01
+      },
+      "bit_accuracy": 0.566875,
+      "bit_acc_std": 0.07654910597126527,
+      "ber": 0.433125,
+      "ber_std": 0.07654910597126527
+    },
+    "Noise-\u03c30.05": {
+      "params": {
+        "sigma": 0.05
+      },
+      "bit_accuracy": 0.530625,
+      "bit_acc_std": 0.08443053727769355,
+      "ber": 0.469375,
+      "ber_std": 0.08443053727769355
+    },
+    "Noise-\u03c30.1": {
+      "params": {
+        "sigma": 0.1
+      },
+      "bit_accuracy": 0.518125,
+      "bit_acc_std": 0.0931417770122516,
+      "ber": 0.481875,
+      "ber_std": 0.0931417770122516
+    },
+    "Blur-K3": {
+      "params": {
+        "kernel_size": 3
+      },
+      "bit_accuracy": 0.525625,
+      "bit_acc_std": 0.08516757378838496,
+      "ber": 0.474375,
+      "ber_std": 0.08516757378838496
+    },
+    "Blur-K5": {
+      "params": {
+        "kernel_size": 5
+      },
+      "bit_accuracy": 0.518125,
+      "bit_acc_std": 0.08054744331758767,
+      "ber": 0.481875,
+      "ber_std": 0.08054744331758769
+    },
+    "Blur-K7": {
+      "params": {
+        "kernel_size": 7
+      },
+      "bit_accuracy": 0.52,
+      "bit_acc_std": 0.08943398403291669,
+      "ber": 0.48,
+      "ber_std": 0.08943398403291669
+    },
+    "Resize-0.5x": {
+      "params": {
+        "scale": 0.5
+      },
+      "bit_accuracy": 0.524375,
+      "bit_acc_std": 0.06967839066023268,
+      "ber": 0.475625,
+      "ber_std": 0.06967839066023267
+    },
+    "Resize-0.75x": {
+      "params": {
+        "scale": 0.75
+      },
+      "bit_accuracy": 0.5375,
+      "bit_acc_std": 0.07447734554883115,
+      "ber": 0.4625,
+      "ber_std": 0.07447734554883115
+    },
+    "Resize-1.5x": {
+      "params": {
+        "scale": 1.5
+      },
+      "bit_accuracy": 0.5575,
+      "bit_acc_std": 0.07535333436550769,
+      "ber": 0.4425,
+      "ber_std": 0.07535333436550769
+    },
+    "Crop-10%": {
+      "params": {
+        "crop_ratio": 0.1
+      },
+      "bit_accuracy": 0.51375,
+      "bit_acc_std": 0.06589527676548601,
+      "ber": 0.48625,
+      "ber_std": 0.06589527676548601
+    },
+    "Crop-25%": {
+      "params": {
+        "crop_ratio": 0.25
+      },
+      "bit_accuracy": 0.49625,
+      "bit_acc_std": 0.094505290857179,
+      "ber": 0.50375,
+      "ber_std": 0.094505290857179
+    },
+    "Rotate-5\u00b0": {
+      "params": {
+        "angle": 5.0
+      },
+      "bit_accuracy": 0.5025,
+      "bit_acc_std": 0.08404797737007119,
+      "ber": 0.4975,
+      "ber_std": 0.08404797737007119
+    },
+    "Rotate-10\u00b0": {
+      "params": {
+        "angle": 10.0
+      },
+      "bit_accuracy": 0.50875,
+      "bit_acc_std": 0.0742251641965176,
+      "ber": 0.49125,
+      "ber_std": 0.0742251641965176
+    },
+    "Rotate--5\u00b0": {
+      "params": {
+        "angle": -5.0
+      },
+      "bit_accuracy": 0.50625,
+      "bit_acc_std": 0.09185586535436917,
+      "ber": 0.49375,
+      "ber_std": 0.09185586535436917
+    },
+    "Rotate--10\u00b0": {
+      "params": {
+        "angle": -10.0
+      },
+      "bit_accuracy": 0.503125,
+      "bit_acc_std": 0.08755578578826187,
+      "ber": 0.496875,
+      "ber_std": 0.08755578578826187
+    }
+  },
+  "computational": {
+    "encode_time_ms": 1.4892833496560343,
+    "decode_time_ms": 1.6239415024756454,
+    "vae_encode_ms": 215.7173916013562,
+    "vae_decode_ms": 416.71829800034175
+  }
+}

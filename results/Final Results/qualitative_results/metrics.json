@@ -1,0 +1,58 @@
+{
+  "config": {
+    "checkpoint": "best res/efficient_20260222_004718/best_model.pth",
+    "alpha_l": 0.005,
+    "alpha_h": 0.0025,
+    "alpha_scale": 0.25,
+    "w_dim": 32,
+    "image_size": 512,
+    "seed": 42
+  },
+  "samples": [
+    {
+      "name": "city",
+      "psnr": 35.327247619628906,
+      "ssim": 0.9896838665008545,
+      "files": {
+        "original": "city_original.png",
+        "watermarked": "city_bislw.png",
+        "residual": "city_residual_x10.png"
+      }
+    },
+    {
+      "name": "beach",
+      "psnr": 40.91614532470703,
+      "ssim": 0.9944895505905151,
+      "files": {
+        "original": "beach_original.png",
+        "watermarked": "beach_bislw.png",
+        "residual": "beach_residual_x10.png"
+      }
+    },
+    {
+      "name": "cat",
+      "psnr": 38.69267272949219,
+      "ssim": 0.9967557787895203,
+      "files": {
+        "original": "cat_original.png",
+        "watermarked": "cat_bislw.png",
+        "residual": "cat_residual_x10.png"
+      }
+    },
+    {
+      "name": "mountain",
+      "psnr": 37.9999885559082,
+      "ssim": 0.9928492903709412,
+      "files": {
+        "original": "mountain_original.png",
+        "watermarked": "mountain_bislw.png",
+        "residual": "mountain_residual_x10.png"
+      }
+    }
+  ],
+  "summary": {
+    "avg_psnr": 38.234012603759766,
+    "avg_ssim": 0.9934446215629578,
+    "n_samples": 4
+  }
+}
