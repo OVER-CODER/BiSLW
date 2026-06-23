@@ -1,10 +1,18 @@
+"""Inference script for BiSLW.
+
+Loads a trained model checkpoint, embeds a random watermark in an input image,
+applies optional attacks, and extracts the decoded watermark to compute recovery accuracy.
+"""
+
+import argparse
 import os
 import sys
+from typing import Optional
+
+from PIL import Image
+import numpy as np
 import torch
 import torch.nn.functional as F
-import numpy as np
-from PIL import Image
-import argparse
 
 # Ensure project root is in sys.path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -13,11 +21,22 @@ if project_root not in sys.path:
 
 from models.latent_split import LatentSplitter
 from models.recombination import LatentRecombiner
-from models.watermark_encoder import WatermarkEncoder
-from models.watermark_decoder import WatermarkDecoder
 from models.vae_wrapper import VAEWrapper
+from models.watermark_decoder import WatermarkDecoder
+from models.watermark_encoder import WatermarkEncoder
 
-def load_image(path, size=256, device='cpu'):
+
+def load_image(path: str, size: int = 256, device: str = 'cpu') -> torch.Tensor:
+    """Loads, center-crops, and resizes an image to normalized tensor range [-1, 1].
+
+    Args:
+        path (str): File path to input image.
+        size (int): Targeted square size of the image.
+        device (str): Destination torch device.
+
+    Returns:
+        torch.Tensor: Normalized image tensor of shape (1, C, H, W).
+    """
     img = Image.open(path).convert('RGB')
     w, h = img.size
     min_dim = min(w, h)
@@ -30,12 +49,28 @@ def load_image(path, size=256, device='cpu'):
     img_tensor = img_tensor * 2 - 1
     return img_tensor.to(device)
 
-def save_image(tensor, path):
+
+def save_image(tensor: torch.Tensor, path: str):
+    """Converts a normalized image tensor back to file format and saves it.
+
+    Args:
+        tensor (torch.Tensor): Image tensor of shape (1, C, H, W) in range [-1, 1].
+        path (str): Destination output file path.
+    """
     img_np = ((tensor.squeeze(0).permute(1, 2, 0).cpu().numpy() + 1) / 2 * 255).clip(0, 255).astype(np.uint8)
     Image.fromarray(img_np).save(path)
 
-# Differentiable JPEG proxy for attack simulation
-def jpeg_attack(images, quality=70):
+
+def jpeg_attack(images: torch.Tensor, quality: int = 70) -> torch.Tensor:
+    """Applies a differentiable downsampling/upsampling JPEG approximation.
+
+    Args:
+        images (torch.Tensor): Input images of shape (B, C, H, W).
+        quality (int): Simulated quality factor (1-100).
+
+    Returns:
+        torch.Tensor: Sim-attacked image tensor.
+    """
     scale_factor = max(0.3, quality / 100)
     B, C, H, W = images.shape
     h_small = max(8, int(H * scale_factor))
@@ -43,9 +78,11 @@ def jpeg_attack(images, quality=70):
     down = F.interpolate(images, size=(h_small, w_small), mode='bilinear', align_corners=False)
     up = F.interpolate(down, size=(H, W), mode='bilinear', align_corners=False)
     blend = quality / 100
-    return blend * images + (1 - blend) * up
+    return blend * images + (1.0 - blend) * up
+
 
 def main():
+    """Main execution entrypoint for CLI inference run."""
     parser = argparse.ArgumentParser()
     parser.add_argument('--image', type=str, required=True, help='Path to input image')
     parser.add_argument('--checkpoint', type=str, default='checkpoints/best.pt', help='Path to model checkpoint')
@@ -110,7 +147,6 @@ def main():
         img_att = (img_wm + torch.randn_like(img_wm) * 0.05).clamp(-1, 1)
         print("Applied Gaussian noise attack (std=0.05).")
     elif args.attack == 'blur':
-        # Simple box blur approximation
         img_att = F.avg_pool2d(img_wm, 5, stride=1, padding=2)
         print("Applied average blur attack.")
     else:
@@ -129,6 +165,7 @@ def main():
     bits_pred = (w_pred > 0).float()
     bit_acc = (bits_true == bits_pred).float().mean().item()
     print(f"Decoded Watermark Bit Accuracy: {bit_acc * 100:.2f}%")
+
 
 if __name__ == '__main__':
     main()

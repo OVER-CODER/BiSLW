@@ -1,11 +1,15 @@
+import math
 import torch
 import torch.nn as nn
-import math
 
 class LatentRecombiner(nn.Module):
-    """
-    Recombines low and high frequency components.
-    Inverse of LatentSplitter.
+    """Recombines low-frequency and high-frequency components back into a spatial latent.
+    
+    Inverse operation of LatentSplitter.
+    
+    Args:
+        mode (str): Spectral decomposition method ('dct' or 'learned').
+        channels (int): Number of input latent channels.
     """
     def __init__(self, mode='dct', channels=4):
         super().__init__()
@@ -13,19 +17,20 @@ class LatentRecombiner(nn.Module):
         self.channels = channels
         
         if mode == 'learned':
-            # Inverse of the 1x1 split (which was a projection)
-            # We need to map back from 2*channels to channels.
+            # Project concatenated features back to original channel space
             self.combiner = nn.Conv2d(channels * 2, channels, kernel_size=1)
         elif mode == 'dct':
             pass
 
     def forward(self, z_low, z_high):
-        """
+        """Forward pass for recombination.
+        
         Args:
-            z_low: Low freq component
-            z_high: High freq component
+            z_low (torch.Tensor): Low-frequency latent component.
+            z_high (torch.Tensor): High-frequency latent component.
+            
         Returns:
-            z_full: Recombined latent
+            torch.Tensor: Recombined spatial latent tensor of shape (B, C, H, W).
         """
         if self.mode == 'dct':
             return self._dct_combine(z_low, z_high)
@@ -33,34 +38,31 @@ class LatentRecombiner(nn.Module):
             return self._learned_combine(z_low, z_high)
 
     def _dct_combine(self, z_low, z_high):
-        # z_low and z_high are in frequency domain and masked (or should be summed if they are disjoint masks)
-        # Since we masked them, z_low + z_high reconstructs the full frequency spectrum.
-        z_freq = z_low + z_high
+        """Reconstructs the spatial latent using 2D Inverse DCT-II.
         
+        Summation of z_low and z_high reconstructs the full frequency spectrum,
+        which is then projected back to the spatial domain.
+        """
+        z_freq = z_low + z_high
         B, C, H, W = z_freq.shape
         
-        # Inverse DCT
-        # Z = D_h^T * Z_freq * D_w
-        
+        # Retrieve orthonormal DCT matrices
         dct_h = self._get_dct_matrix(H, z_freq.device)
         dct_w = self._get_dct_matrix(W, z_freq.device)
         
-        # Transpose DCT matrices for inverse
-        idct_h = dct_h.t()
-        idct_w = dct_w.t()
-        
-        z = torch.einsum('ij,b c j k -> b c i k', idct_h, z_freq)
-        z = torch.einsum('b c i k, jk -> b c i j', z, idct_w)
+        # Project back to spatial domain: Z = D_h^T * Z_freq * D_w
+        z = torch.einsum('ij,b c j k -> b c i k', dct_h.t(), z_freq)
+        z = torch.einsum('b c i k, jk -> b c i j', z, dct_w.t())
         
         return z
 
     def _learned_combine(self, z_low, z_high):
-        # Concatenate and project back
+        """Recombines components using channel concatenation and 1x1 projection."""
         combined = torch.cat([z_low, z_high], dim=1)
         return self.combiner(combined)
 
     def _get_dct_matrix(self, N, device):
-        # Same as in Splitter, could be shared utility
+        """Generates the orthonormal 1D DCT-II matrix of size N."""
         n = torch.arange(N, device=device).float()
         k = torch.arange(N, device=device).float()
         dct_mat = torch.cos((math.pi / N) * (n + 0.5) * k.unsqueeze(1))

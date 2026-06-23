@@ -1,46 +1,34 @@
-"""
-Watermark Robustness Evaluation Module.
+"""Watermark Robustness Evaluation Module.
 
-Evaluates watermark robustness under various attacks:
-- JPEG compression (quality levels: 90, 70, 50, 30)
-- Gaussian noise (σ = 0.01, 0.05, 0.1)
-- Gaussian blur (kernel sizes 3, 5, 7)
-- Resizing (0.5×, 0.75×, 1.5×)
-- Cropping (random 10%, 25%)
-- Rotation (±5°, ±10°)
-
-Metrics computed per attack:
-- Bit accuracy
-- Detection accuracy
-- Bit Error Rate (BER)
-- False Positive Rate (FPR)
-- True Positive Rate (TPR)
-- ROC curve and AUC
+Evaluates watermark robustness under various attacks including JPEG compression,
+Gaussian noise, Gaussian blur, resizing, random cropping, and rotation.
+Computes bit-level, detection-level, and ROC/AUC metrics.
 """
 
+import os
+from dataclasses import dataclass, field
+from typing import Callable, Dict, List, Optional, Tuple
+
+import matplotlib.pyplot as plt
+import numpy as np
+from sklearn.metrics import roc_curve, auc
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
-from typing import Dict, List, Tuple, Optional, Callable
-from dataclasses import dataclass, field
-from sklearn.metrics import roc_curve, auc
-import matplotlib.pyplot as plt
-import os
 
 
 @dataclass
 class AttackResult:
-    """Results for a single attack evaluation."""
+    """Results container for a single attack evaluation."""
     attack_name: str
     attack_params: Dict
     bit_accuracy: float
     detection_accuracy: float
-    ber: float  # Bit Error Rate
-    fpr: float  # False Positive Rate
-    tpr: float  # True Positive Rate
+    ber: float
+    fpr: float
+    tpr: float
     auc_score: float
-    roc_data: Dict = field(default_factory=dict)  # For ROC curve plotting
+    roc_data: Dict = field(default_factory=dict)
     
     def __repr__(self):
         return (f"{self.attack_name} ({self.attack_params}): "
@@ -49,53 +37,67 @@ class AttackResult:
 
 
 class Attack(nn.Module):
-    """Base class for attacks."""
+    """Base class for image-space watermark attacks."""
+    
     def __init__(self, name: str):
+        """Initializes the Attack base class.
+
+        Args:
+            name (str): The name of the attack.
+        """
         super().__init__()
         self.name = name
         
     def forward(self, images: torch.Tensor) -> torch.Tensor:
+        """Applies the attack transformation on the image tensor.
+
+        Args:
+            images (torch.Tensor): Input images of shape (B, C, H, W).
+
+        Returns:
+            torch.Tensor: Attacked images of shape (B, C, H, W).
+        """
         raise NotImplementedError
 
 
 class JPEGCompression(Attack):
-    """
-    Differentiable JPEG compression approximation.
+    """Differentiable JPEG compression approximation using DCT-based quantization."""
     
-    Uses DCT-based quantization to simulate JPEG artifacts.
-    """
     def __init__(self, quality: int = 50):
+        """Initializes the JPEGCompression attack.
+
+        Args:
+            quality (int): Simulated quality factor (1-100).
+        """
         super().__init__(f"JPEG-Q{quality}")
         self.quality = quality
         self.params = {"quality": quality}
-        
-        # Quality factor affects quantization strength
-        # Lower quality = more quantization = more artifacts
         self.scale = (1 - quality / 100) * 0.5 + 0.1
         
     def forward(self, images: torch.Tensor) -> torch.Tensor:
-        """Apply JPEG-like compression artifacts."""
+        """Applies simulated JPEG compression to images.
+
+        Args:
+            images (torch.Tensor): Input images of shape (B, C, H, W).
+
+        Returns:
+            torch.Tensor: Attacked images.
+        """
         B, C, H, W = images.shape
-        
-        # Simulate DCT quantization by block-wise processing
         block_size = 8
         
-        # Pad to multiple of block_size
         pad_h = (block_size - H % block_size) % block_size
         pad_w = (block_size - W % block_size) % block_size
         images_padded = F.pad(images, (0, pad_w, 0, pad_h), mode='reflect')
         
         H_pad, W_pad = images_padded.shape[2:]
         
-        # Process in blocks using unfold
         blocks = images_padded.unfold(2, block_size, block_size).unfold(3, block_size, block_size)
         blocks = blocks.contiguous()
         
-        # Apply quantization noise (simulate DCT quantization)
         noise = torch.randn_like(blocks) * self.scale
         blocks_noisy = blocks + noise
         
-        # Downsample and upsample to simulate chroma subsampling and high-freq loss
         scale_factor = max(0.5, self.quality / 100)
         h_small = max(1, int(H_pad * scale_factor))
         w_small = max(1, int(W_pad * scale_factor))
@@ -103,42 +105,62 @@ class JPEGCompression(Attack):
         images_down = F.interpolate(images_padded, size=(h_small, w_small), mode='bilinear', align_corners=False)
         images_up = F.interpolate(images_down, size=(H_pad, W_pad), mode='bilinear', align_corners=False)
         
-        # Blend original with downsampled based on quality
         blend_factor = self.quality / 100
         images_compressed = blend_factor * images_padded + (1 - blend_factor) * images_up
         
-        # Remove padding
         images_compressed = images_compressed[:, :, :H, :W]
-        
         return images_compressed
 
 
 class GaussianNoise(Attack):
-    """Add Gaussian noise to images."""
+    """Adds zero-mean Gaussian noise to images."""
+    
     def __init__(self, sigma: float = 0.05):
+        """Initializes the GaussianNoise attack.
+
+        Args:
+            sigma (float): Standard deviation of the noise.
+        """
         super().__init__(f"Noise-σ{sigma}")
         self.sigma = sigma
         self.params = {"sigma": sigma}
         
     def forward(self, images: torch.Tensor) -> torch.Tensor:
-        """Add Gaussian noise."""
+        """Applies Gaussian noise to images.
+
+        Args:
+            images (torch.Tensor): Input images.
+
+        Returns:
+            torch.Tensor: Noisy images clipped to [-1, 1].
+        """
         noise = torch.randn_like(images) * self.sigma
         return torch.clamp(images + noise, -1, 1)
 
 
 class GaussianBlur(Attack):
-    """Apply Gaussian blur to images."""
-    def __init__(self, kernel_size: int = 5, sigma: float = None):
+    """Applies a 2D Gaussian blur filter to images."""
+    
+    def __init__(self, kernel_size: int = 5, sigma: Optional[float] = None):
+        """Initializes the GaussianBlur attack.
+
+        Args:
+            kernel_size (int): Size of the blur kernel (must be odd).
+            sigma (Optional[float]): Blur standard deviation.
+        """
         super().__init__(f"Blur-K{kernel_size}")
         self.kernel_size = kernel_size
         self.sigma = sigma if sigma else kernel_size / 3
         self.params = {"kernel_size": kernel_size, "sigma": self.sigma}
         
-        # Create Gaussian kernel
         self.register_buffer('kernel', self._create_kernel())
         
     def _create_kernel(self) -> torch.Tensor:
-        """Create 2D Gaussian kernel."""
+        """Creates a 2D Gaussian kernel tensor.
+
+        Returns:
+            torch.Tensor: Normalized Gaussian kernel of shape (1, 1, K, K).
+        """
         coords = torch.arange(self.kernel_size, dtype=torch.float32) - self.kernel_size // 2
         xx, yy = torch.meshgrid(coords, coords, indexing='ij')
         kernel = torch.exp(-(xx**2 + yy**2) / (2 * self.sigma**2))
@@ -146,145 +168,182 @@ class GaussianBlur(Attack):
         return kernel.unsqueeze(0).unsqueeze(0)
         
     def forward(self, images: torch.Tensor) -> torch.Tensor:
-        """Apply Gaussian blur."""
+        """Blurs the input images.
+
+        Args:
+            images (torch.Tensor): Input images.
+
+        Returns:
+            torch.Tensor: Blurred images.
+        """
         B, C, H, W = images.shape
         kernel = self.kernel.to(images.device)
-        
-        # Expand kernel for all channels
         kernel_expanded = kernel.expand(C, 1, -1, -1)
         
-        # Apply convolution
         padding = self.kernel_size // 2
         blurred = F.conv2d(images, kernel_expanded, padding=padding, groups=C)
-        
         return blurred
 
 
 class Resize(Attack):
-    """Resize images (downsample then upsample back)."""
+    """Resizes images to a smaller dimension, then interpolates back."""
+    
     def __init__(self, scale: float = 0.5):
+        """Initializes the Resize attack.
+
+        Args:
+            scale (float): Rescaling factor.
+        """
         super().__init__(f"Resize-{scale}x")
         self.scale = scale
         self.params = {"scale": scale}
         
     def forward(self, images: torch.Tensor) -> torch.Tensor:
-        """Apply resize attack."""
+        """Applies resize downsampling and upsampling.
+
+        Args:
+            images (torch.Tensor): Input images.
+
+        Returns:
+            torch.Tensor: Resized and upscaled images.
+        """
         B, C, H, W = images.shape
         
         h_small = max(1, int(H * self.scale))
         w_small = max(1, int(W * self.scale))
         
-        # Downsample
         images_down = F.interpolate(images, size=(h_small, w_small), mode='bilinear', align_corners=False)
-        
-        # Upsample back to original size
         images_up = F.interpolate(images_down, size=(H, W), mode='bilinear', align_corners=False)
-        
         return images_up
 
 
 class RandomCrop(Attack):
-    """Random crop and resize back to original size."""
+    """Crops a random subgrid from the image and scales it back."""
+    
     def __init__(self, crop_ratio: float = 0.1):
+        """Initializes the RandomCrop attack.
+
+        Args:
+            crop_ratio (float): Ratio of image edges to crop (0 to 0.5).
+        """
         super().__init__(f"Crop-{int(crop_ratio*100)}%")
-        self.crop_ratio = crop_ratio  # Percentage of image to crop from each edge
+        self.crop_ratio = crop_ratio
         self.params = {"crop_ratio": crop_ratio}
         
     def forward(self, images: torch.Tensor) -> torch.Tensor:
-        """Apply random crop attack."""
+        """Applies random cropping.
+
+        Args:
+            images (torch.Tensor): Input images.
+
+        Returns:
+            torch.Tensor: Cropped and resized images.
+        """
         B, C, H, W = images.shape
         
-        # Calculate crop sizes
         crop_h = int(H * self.crop_ratio)
         crop_w = int(W * self.crop_ratio)
         
-        # Random offsets
         top = torch.randint(0, crop_h + 1, (1,)).item() if crop_h > 0 else 0
         left = torch.randint(0, crop_w + 1, (1,)).item() if crop_w > 0 else 0
         
-        # Crop
         cropped = images[:, :, top:H-crop_h+top, left:W-crop_w+left]
-        
-        # Resize back
         resized = F.interpolate(cropped, size=(H, W), mode='bilinear', align_corners=False)
-        
         return resized
 
 
 class Rotation(Attack):
-    """Rotate images by a given angle."""
+    """Rotates images by a set degree with bilinear sampling and reflection padding."""
+    
     def __init__(self, angle: float = 5.0):
+        """Initializes the Rotation attack.
+
+        Args:
+            angle (float): Rotation angle in degrees.
+        """
         super().__init__(f"Rotate-{angle}°")
         self.angle = angle
         self.params = {"angle": angle}
         
     def forward(self, images: torch.Tensor) -> torch.Tensor:
-        """Apply rotation attack."""
+        """Applies rotation.
+
+        Args:
+            images (torch.Tensor): Input images.
+
+        Returns:
+            torch.Tensor: Rotated images.
+        """
         B, C, H, W = images.shape
-        
-        # Convert angle to radians
         angle_rad = self.angle * np.pi / 180
         
-        # Create rotation matrix
         cos_a = np.cos(angle_rad)
         sin_a = np.sin(angle_rad)
         
-        # Affine transformation matrix
         theta = torch.tensor([
             [cos_a, -sin_a, 0],
             [sin_a, cos_a, 0]
         ], dtype=images.dtype, device=images.device).unsqueeze(0).expand(B, -1, -1)
         
-        # Create grid
         grid = F.affine_grid(theta, images.size(), align_corners=False)
-        
-        # Apply transformation
         rotated = F.grid_sample(images, grid, mode='bilinear', padding_mode='reflection', align_corners=False)
-        
         return rotated
 
 
 class CombinedAttack(Attack):
-    """Apply multiple attacks in sequence."""
+    """Chains multiple attacks sequentially."""
+    
     def __init__(self, attacks: List[Attack]):
+        """Initializes the CombinedAttack.
+
+        Args:
+            attacks (List[Attack]): Ordered list of attacks to apply.
+        """
         names = [a.name for a in attacks]
         super().__init__(f"Combined({','.join(names)})")
         self.attacks = nn.ModuleList(attacks)
         self.params = {"attacks": names}
         
     def forward(self, images: torch.Tensor) -> torch.Tensor:
+        """Applies chained attacks sequentially.
+
+        Args:
+            images (torch.Tensor): Input images.
+
+        Returns:
+            torch.Tensor: Combined attacked images.
+        """
         for attack in self.attacks:
             images = attack(images)
         return images
 
 
 class RobustnessEvaluator:
-    """
-    Comprehensive robustness evaluation framework.
-    
-    Evaluates watermark robustness under various attacks and computes
-    multiple metrics including bit accuracy, BER, and ROC/AUC.
-    """
+    """Robustness evaluation framework for measuring watermark integrity under attacks."""
     
     def __init__(
         self,
-        device: torch.device = None,
+        device: Optional[torch.device] = None,
         output_dir: str = "results/robustness"
     ):
-        """
+        """Initializes the RobustnessEvaluator.
+
         Args:
-            device: Device for computation
-            output_dir: Directory for saving results
+            device: Device for computation (e.g., CPU, CUDA, MPS).
+            output_dir: Directory for storing evaluation plots and logs.
         """
         self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
         
-        # Define attack battery
         self.attacks = self._create_attack_battery()
         
     def _create_attack_battery(self) -> Dict[str, List[Attack]]:
-        """Create comprehensive attack battery."""
+        """Defines the default evaluation suite of attacks.
+
+        Returns:
+            Dict[str, List[Attack]]: A dictionary grouping attack types.
+        """
         attacks = {
             "JPEG Compression": [
                 JPEGCompression(quality=90),
@@ -318,7 +377,6 @@ class RobustnessEvaluator:
                 Rotation(angle=-10.0),
             ],
         }
-        
         return attacks
         
     def compute_bit_accuracy(
@@ -326,23 +384,18 @@ class RobustnessEvaluator:
         watermark_true: torch.Tensor,
         watermark_pred: torch.Tensor
     ) -> float:
-        """
-        Compute bit-level accuracy.
-        
+        """Computes the bit-level recovery accuracy.
+
         Args:
-            watermark_true: Ground truth watermark (B, W_dim)
-            watermark_pred: Predicted watermark (B, W_dim)
-            
+            watermark_true (torch.Tensor): True watermark of shape (B, W_dim).
+            watermark_pred (torch.Tensor): Extracted watermark predictions.
+
         Returns:
-            Bit accuracy [0, 1]
+            float: Bit accuracy value in range [0, 1].
         """
-        # Convert to binary
         bits_true = (watermark_true > 0).float()
         bits_pred = (watermark_pred > 0).float()
-        
-        # Compute accuracy
         accuracy = (bits_true == bits_pred).float().mean().item()
-        
         return accuracy
         
     def compute_ber(
@@ -350,23 +403,18 @@ class RobustnessEvaluator:
         watermark_true: torch.Tensor,
         watermark_pred: torch.Tensor
     ) -> float:
-        """
-        Compute Bit Error Rate.
-        
-        BER = Number of bit errors / Total number of bits
-        
+        """Computes the Bit Error Rate (BER).
+
         Args:
-            watermark_true: Ground truth watermark (B, W_dim)
-            watermark_pred: Predicted watermark (B, W_dim)
-            
+            watermark_true (torch.Tensor): True watermark of shape (B, W_dim).
+            watermark_pred (torch.Tensor): Extracted watermark predictions.
+
         Returns:
-            BER [0, 1] (lower is better)
+            float: BER value in range [0, 1].
         """
         bits_true = (watermark_true > 0).float()
         bits_pred = (watermark_pred > 0).float()
-        
         ber = (bits_true != bits_pred).float().mean().item()
-        
         return ber
         
     def compute_detection_metrics(
@@ -375,57 +423,46 @@ class RobustnessEvaluator:
         watermark_pred: torch.Tensor,
         threshold: float = 0.5
     ) -> Tuple[float, float, float, float, Dict]:
-        """
-        Compute detection metrics including FPR, TPR, and ROC curve.
-        
+        """Calculates TPR, FPR, detection accuracy, and ROC/AUC metrics.
+
         Args:
-            watermark_true: Ground truth watermark (B, W_dim)
-            watermark_pred: Predicted watermark (B, W_dim)
-            threshold: Detection threshold
-            
+            watermark_true (torch.Tensor): True watermark of shape (B, W_dim).
+            watermark_pred (torch.Tensor): Extracted watermark predictions.
+            threshold (float): Similarity threshold for detection.
+
         Returns:
-            detection_acc, fpr, tpr, auc_score, roc_data
+            Tuple[float, float, float, float, Dict]:
+                - detection_acc
+                - fpr
+                - tpr
+                - auc_score
+                - roc_data (fpr_array, tpr_array, thresholds)
         """
-        # Compute cosine similarity as detection score
         watermark_true_norm = F.normalize(watermark_true, dim=1)
         watermark_pred_norm = F.normalize(watermark_pred, dim=1)
         
-        similarity = (watermark_true_norm * watermark_pred_norm).sum(dim=1)  # (B,)
+        similarity = (watermark_true_norm * watermark_pred_norm).sum(dim=1)
         
-        # For detection: we consider a watermark "detected" if similarity > threshold
-        # True Positive: watermarked image correctly detected
-        # False Positive: non-watermarked image incorrectly detected as watermarked
-        
-        # Since all our images are watermarked in this context, we simulate
-        # negative samples by using random watermarks
         B = watermark_true.shape[0]
         random_watermarks = torch.randn_like(watermark_true)
         random_watermarks_norm = F.normalize(random_watermarks, dim=1)
         
-        # Similarity with random watermarks (should be low)
         similarity_random = (watermark_true_norm * random_watermarks_norm).sum(dim=1)
         
-        # Labels: 1 for true watermark, 0 for random
         labels = torch.cat([torch.ones(B), torch.zeros(B)])
         scores = torch.cat([similarity, similarity_random])
         
         labels_np = labels.cpu().numpy()
         scores_np = scores.cpu().numpy()
         
-        # Compute ROC curve
         fpr_array, tpr_array, thresholds = roc_curve(labels_np, scores_np)
         auc_score = auc(fpr_array, tpr_array)
         
-        # Compute metrics at specific threshold
         detected = (scores > threshold).float()
         
-        # True positives (correctly detected watermarked images)
         tp = (detected[:B] == 1).sum().item()
-        # False negatives
         fn = (detected[:B] == 0).sum().item()
-        # False positives (random detected as watermarked)
         fp = (detected[B:] == 1).sum().item()
-        # True negatives
         tn = (detected[B:] == 0).sum().item()
         
         tpr = tp / (tp + fn + 1e-8)
@@ -450,36 +487,31 @@ class RobustnessEvaluator:
         vae_encode_fn: Optional[Callable] = None,
         vae_decode_fn: Optional[Callable] = None
     ) -> AttackResult:
-        """
-        Evaluate a single attack.
-        
+        """Evaluates watermark robustness under a single attack.
+
         Args:
-            attack: Attack to apply
-            images_watermarked: Watermarked images (B, C, H, W)
-            watermark_true: Ground truth watermark (B, W_dim)
-            extract_watermark_fn: Function to extract watermark from latents
-            vae_encode_fn: Function to encode images to latents
-            vae_decode_fn: Function to decode latents to images
-            
+            attack (Attack): Attack instance to apply.
+            images_watermarked (torch.Tensor): Watermarked images.
+            watermark_true (torch.Tensor): True watermark bits.
+            extract_watermark_fn (Callable): Extraction function.
+            vae_encode_fn (Optional[Callable]): Optional encoder to project back to latent space.
+            vae_decode_fn (Optional[Callable]): Optional decoder.
+
         Returns:
-            AttackResult with all metrics
+            AttackResult: Performance metrics under the specified attack.
         """
         images_watermarked = images_watermarked.to(self.device)
         watermark_true = watermark_true.to(self.device)
         attack = attack.to(self.device)
         
-        # Apply attack to images
         images_attacked = attack(images_watermarked)
         
-        # If we have VAE functions, work in latent space
         if vae_encode_fn is not None:
             z_attacked = vae_encode_fn(images_attacked)
             watermark_pred = extract_watermark_fn(z_attacked)
         else:
-            # Assume extract_watermark_fn works on images directly
             watermark_pred = extract_watermark_fn(images_attacked)
             
-        # Compute metrics
         bit_accuracy = self.compute_bit_accuracy(watermark_true, watermark_pred)
         ber = self.compute_ber(watermark_true, watermark_pred)
         detection_acc, fpr, tpr, auc_score, roc_data = self.compute_detection_metrics(
@@ -507,18 +539,17 @@ class RobustnessEvaluator:
         vae_encode_fn: Optional[Callable] = None,
         vae_decode_fn: Optional[Callable] = None
     ) -> Dict[str, List[AttackResult]]:
-        """
-        Run full robustness evaluation.
-        
+        """Runs the complete battery of attacks on watermarked images.
+
         Args:
-            images_watermarked: Watermarked images
-            watermark_true: Ground truth watermarks
-            extract_watermark_fn: Function to extract watermark
-            vae_encode_fn: Optional VAE encoder
-            vae_decode_fn: Optional VAE decoder
-            
+            images_watermarked (torch.Tensor): Watermarked images.
+            watermark_true (torch.Tensor): True watermark bits.
+            extract_watermark_fn (Callable): Extraction function.
+            vae_encode_fn (Optional[Callable]): Optional VAE encoder.
+            vae_decode_fn (Optional[Callable]): Optional VAE decoder.
+
         Returns:
-            Dictionary mapping attack categories to results
+            Dict[str, List[AttackResult]]: Mapping of attack categories to results.
         """
         results = {}
         
@@ -543,14 +574,13 @@ class RobustnessEvaluator:
     def plot_roc_curves(
         self,
         results: Dict[str, List[AttackResult]],
-        save_path: str = None
+        save_path: Optional[str] = None
     ):
-        """
-        Plot ROC curves for all attacks.
-        
+        """Generates ROC curves showing detection AUC under various attacks.
+
         Args:
-            results: Results from evaluate_all_attacks
-            save_path: Path to save plot
+            results (Dict[str, List[AttackResult]]): Results mapping from evaluate_all_attacks.
+            save_path (Optional[str]): Output file path.
         """
         fig, axes = plt.subplots(2, 3, figsize=(15, 10))
         axes = axes.flatten()
@@ -590,15 +620,14 @@ class RobustnessEvaluator:
         self,
         results: Dict[str, List[AttackResult]],
         metric: str = "bit_accuracy",
-        save_path: str = None
+        save_path: Optional[str] = None
     ):
-        """
-        Plot attack severity vs performance.
-        
+        """Plots watermark recovery performance against attack severity.
+
         Args:
-            results: Results from evaluate_all_attacks
-            metric: Metric to plot ('bit_accuracy', 'ber', 'auc_score')
-            save_path: Path to save plot
+            results (Dict[str, List[AttackResult]]): Results mapping.
+            metric (str): The metric variable to plot ('bit_accuracy', 'ber', 'auc_score').
+            save_path (Optional[str]): Output file path.
         """
         fig, axes = plt.subplots(2, 3, figsize=(15, 10))
         axes = axes.flatten()
@@ -608,14 +637,11 @@ class RobustnessEvaluator:
                 break
                 
             ax = axes[idx]
-            
-            # Extract parameter and metric values
             params = []
             metrics = []
             labels = []
             
             for result in attack_results:
-                # Get the main parameter value
                 if 'quality' in result.attack_params:
                     params.append(result.attack_params['quality'])
                 elif 'sigma' in result.attack_params:
@@ -645,24 +671,27 @@ class RobustnessEvaluator:
         if save_path:
             plt.savefig(save_path, dpi=150, bbox_inches='tight')
         else:
-            plt.savefig(os.path.join(self.output_dir, f"attack_severity_{metric}.png"), dpi=150, bbox_inches='tight')
+            plt.savefig(
+                os.path.join(self.output_dir, f"attack_severity_{metric}.png"), 
+                dpi=150, 
+                bbox_inches='tight'
+            )
             
         plt.close()
         
     def generate_report(
         self,
         results: Dict[str, List[AttackResult]],
-        save_path: str = None
+        save_path: Optional[str] = None
     ) -> str:
-        """
-        Generate a text report of robustness evaluation.
-        
+        """Compiles and saves a comprehensive robustness evaluation report.
+
         Args:
-            results: Results from evaluate_all_attacks
-            save_path: Path to save report
-            
+            results (Dict[str, List[AttackResult]]): Results from evaluate_all_attacks.
+            save_path (Optional[str]): Output file path.
+
         Returns:
-            Report string
+            str: Compiled report contents.
         """
         lines = []
         lines.append("=" * 80)
@@ -687,7 +716,6 @@ class RobustnessEvaluator:
                 
         lines.append("\n" + "=" * 80)
         
-        # Summary statistics
         all_results = [r for results_list in results.values() for r in results_list]
         avg_bit_acc = np.mean([r.bit_accuracy for r in all_results])
         avg_auc = np.mean([r.auc_score for r in all_results])

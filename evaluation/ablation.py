@@ -1,27 +1,23 @@
-"""
-Ablation Study Module for Watermark Evaluation.
+"""Ablation Study Module for Watermark Evaluation.
 
-Studies the impact of:
-- Watermark strength parameter (alpha)
-- Embedding layer (early vs late latent layers)
-- Watermark bit length
-
-Provides performance trend plots and trade-off interpretation.
+Analyzes the impact of watermark strength (alpha), embedding layer selection,
+and watermark bit length on reconstructed image quality and extraction accuracy.
 """
 
-import torch
-import torch.nn as nn
-import numpy as np
-from typing import Dict, List, Tuple, Callable, Optional
-import matplotlib.pyplot as plt
 import os
 from dataclasses import dataclass, field
+from typing import Callable, Dict, List, Optional, Tuple
+
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+import torch.nn as nn
 from tqdm import tqdm
 
 
 @dataclass
 class AblationResult:
-    """Container for ablation study results."""
+    """Container for holding and analyzing ablation study results."""
     parameter_name: str
     parameter_values: List
     psnr_values: List[float]
@@ -31,29 +27,38 @@ class AblationResult:
     extra_metrics: Dict = field(default_factory=dict)
     
     def best_tradeoff(self, psnr_threshold: float = 35.0, ssim_threshold: float = 0.9) -> int:
-        """Find best parameter value meeting quality thresholds."""
+        """Finds the best parameter index that satisfies quality thresholds.
+
+        If no configuration satisfies the thresholds, returns the parameter index
+        with the highest average of normalized PSNR and bit accuracy.
+
+        Args:
+            psnr_threshold (float): Minimum acceptable PSNR in dB.
+            ssim_threshold (float): Minimum acceptable SSIM value.
+
+        Returns:
+            int: The index of the optimal parameter value.
+        """
         for i, (psnr, ssim, acc) in enumerate(zip(self.psnr_values, self.ssim_values, self.bit_accuracy_values)):
             if psnr >= psnr_threshold and ssim >= ssim_threshold:
                 return i
-        # If no value meets thresholds, return the one with highest combined score
-        scores = [0.5 * p/50 + 0.5 * a for p, a in zip(self.psnr_values, self.bit_accuracy_values)]
-        return np.argmax(scores)
+        scores = [0.5 * p / 50.0 + 0.5 * a for p, a in zip(self.psnr_values, self.bit_accuracy_values)]
+        return int(np.argmax(scores))
 
 
 class AblationStudy:
-    """
-    Ablation study framework for watermark parameter analysis.
-    """
+    """Ablation study framework for watermark parameter analysis."""
     
     def __init__(
         self,
-        device: torch.device = None,
+        device: Optional[torch.device] = None,
         output_dir: str = "results/ablation"
     ):
-        """
+        """Initializes the AblationStudy class.
+
         Args:
-            device: Device for computation
-            output_dir: Directory for saving results
+            device: Device for computation (e.g., CPU, CUDA, MPS).
+            output_dir: Directory for saving generated plots and reports.
         """
         self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.output_dir = output_dir
@@ -71,25 +76,26 @@ class AblationStudy:
         encoder_h,
         decoder_l,
         decoder_h,
-        alpha_values: List[float] = None,
-        compute_metrics_fn: Callable = None
+        alpha_values: Optional[List[float]] = None,
+        compute_metrics_fn: Optional[Callable] = None
     ) -> AblationResult:
-        """
-        Study impact of watermark strength (alpha) parameter.
-        
+        """Evaluates how varying the watermark strength (alpha) impacts quality and accuracy.
+
         Args:
-            images: Original images (B, C, H, W)
-            watermark: Watermark to embed (B, W_dim)
-            vae: VAE wrapper
-            splitter: Latent splitter
-            recombiner: Latent recombiner
-            encoder_l, encoder_h: Watermark encoders
-            decoder_l, decoder_h: Watermark decoders
-            alpha_values: List of alpha values to test
-            compute_metrics_fn: Function to compute PSNR/SSIM
-            
+            images (torch.Tensor): Original images tensor of shape (B, C, H, W).
+            watermark (torch.Tensor): Watermark bits tensor of shape (B, W_dim).
+            vae: VAE wrapper module.
+            splitter: Latent splitter module.
+            recombiner: Latent recombiner module.
+            encoder_l: Low-frequency watermark encoder.
+            encoder_h: High-frequency watermark encoder.
+            decoder_l: Low-frequency watermark decoder.
+            decoder_h: High-frequency watermark decoder.
+            alpha_values (Optional[List[float]]): List of alpha scaling values to test.
+            compute_metrics_fn (Optional[Callable]): Optional function to compute PSNR and SSIM.
+
         Returns:
-            AblationResult with metrics for each alpha value
+            AblationResult: Collected metrics for each tested strength.
         """
         if alpha_values is None:
             alpha_values = [0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0]
@@ -105,29 +111,23 @@ class AblationStudy:
         print("Ablating watermark strength (alpha)...")
         
         for alpha in tqdm(alpha_values, desc="Alpha values"):
-            # Encode to latent
             z = vae.encode(images)
             z_low, z_high = splitter(z)
             
-            # Embed watermark with current alpha
             z_low_wm = encoder_l(z_low, watermark, alpha=alpha)
             z_high_wm = encoder_h(z_high, watermark, alpha=alpha)
             z_wm = recombiner(z_low_wm, z_high_wm)
             
-            # Decode to image
             images_wm = vae.decode(z_wm)
             
-            # Compute image quality
             if compute_metrics_fn:
                 metrics = compute_metrics_fn(images, images_wm)
                 psnr = metrics['psnr'].mean if hasattr(metrics['psnr'], 'mean') else metrics['psnr']
                 ssim = metrics['ssim'].mean if hasattr(metrics['ssim'], 'mean') else metrics['ssim']
             else:
-                # Simple PSNR/SSIM computation
                 mse = torch.mean((images - images_wm) ** 2, dim=[1, 2, 3])
-                psnr = 10 * torch.log10(4.0 / (mse + 1e-10)).mean().item()  # data_range=2
+                psnr = 10 * torch.log10(4.0 / (mse + 1e-10)).mean().item()
                 
-                # Simple SSIM approximation
                 mu1 = images.mean(dim=[2, 3], keepdim=True)
                 mu2 = images_wm.mean(dim=[2, 3], keepdim=True)
                 var1 = ((images - mu1) ** 2).mean(dim=[2, 3])
@@ -140,13 +140,11 @@ class AblationStudy:
             psnr_values.append(psnr)
             ssim_values.append(ssim)
             
-            # Extract watermark and compute accuracy
             z_wm_low, z_wm_high = splitter(z_wm)
             w_pred_l = decoder_l(z_wm_low)
             w_pred_h = decoder_h(z_wm_high)
             w_pred = (w_pred_l + w_pred_h) / 2
             
-            # Bit accuracy
             bits_true = (watermark > 0).float()
             bits_pred = (w_pred > 0).float()
             bit_acc = (bits_true == bits_pred).float().mean().item()
@@ -177,34 +175,29 @@ class AblationStudy:
         decoder_l,
         decoder_h,
         alpha: float = 1.0,
-        compute_metrics_fn: Callable = None
+        compute_metrics_fn: Optional[Callable] = None
     ) -> AblationResult:
-        """
-        Study impact of embedding in different latent layers.
-        
-        Configurations:
-        - Low-frequency only
-        - High-frequency only
-        - Both (balanced)
-        - Both (low-emphasis)
-        - Both (high-emphasis)
-        
+        """Evaluates embedding performance across different sub-band configurations.
+
         Args:
-            images: Original images
-            watermark: Watermark to embed
-            vae, splitter, recombiner: Model components
-            encoder_l, encoder_h: Watermark encoders
-            decoder_l, decoder_h: Watermark decoders
-            alpha: Base watermark strength
-            compute_metrics_fn: Metrics computation function
-            
+            images (torch.Tensor): Original images tensor.
+            watermark (torch.Tensor): Watermark bits tensor.
+            vae: VAE wrapper module.
+            splitter: Latent splitter module.
+            recombiner: Latent recombiner module.
+            encoder_l: Low-frequency watermark encoder.
+            encoder_h: High-frequency watermark encoder.
+            decoder_l: Low-frequency watermark decoder.
+            decoder_h: High-frequency watermark decoder.
+            alpha (float): Watermark strength scaling factor.
+            compute_metrics_fn (Optional[Callable]): Optional function to compute PSNR and SSIM.
+
         Returns:
-            AblationResult with metrics for each configuration
+            AblationResult: Collected metrics for each sub-band configuration.
         """
         images = images.to(self.device)
         watermark = watermark.to(self.device)
         
-        # Layer configurations: (alpha_l, alpha_h, name)
         configs = [
             (alpha, 0.0, "Low-freq only"),
             (0.0, alpha, "High-freq only"),
@@ -227,7 +220,6 @@ class AblationStudy:
             z = vae.encode(images)
             z_low, z_high = splitter(z)
             
-            # Embed with current config
             if alpha_l > 0:
                 z_low_wm = encoder_l(z_low, watermark, alpha=alpha_l)
             else:
@@ -241,7 +233,6 @@ class AblationStudy:
             z_wm = recombiner(z_low_wm, z_high_wm)
             images_wm = vae.decode(z_wm)
             
-            # Compute metrics
             if compute_metrics_fn:
                 metrics = compute_metrics_fn(images, images_wm)
                 psnr = metrics['psnr'].mean if hasattr(metrics['psnr'], 'mean') else metrics['psnr']
@@ -249,15 +240,13 @@ class AblationStudy:
             else:
                 mse = torch.mean((images - images_wm) ** 2, dim=[1, 2, 3])
                 psnr = 10 * torch.log10(4.0 / (mse + 1e-10)).mean().item()
-                ssim = 0.9  # Placeholder
+                ssim = 0.9
                 
             psnr_values.append(psnr)
             ssim_values.append(ssim)
             
-            # Extract and evaluate
             z_wm_low, z_wm_high = splitter(z_wm)
             
-            # Only decode from layers that were watermarked
             if alpha_l > 0 and alpha_h > 0:
                 w_pred = (decoder_l(z_wm_low) + decoder_h(z_wm_high)) / 2
             elif alpha_l > 0:
@@ -290,24 +279,28 @@ class AblationStudy:
         recombiner,
         encoder_class,
         decoder_class,
-        bit_lengths: List[int] = None,
+        bit_lengths: Optional[List[int]] = None,
         alpha: float = 1.0,
-        compute_metrics_fn: Callable = None
+        compute_metrics_fn: Optional[Callable] = None
     ) -> AblationResult:
-        """
-        Study impact of watermark bit length.
-        
+        """Evaluates embedding performance across various watermark bit lengths.
+
+        Note that in normal circumstances models are specifically trained for each
+        length. This ablation tests the capacity limits and configuration viability.
+
         Args:
-            images: Original images
-            vae, splitter, recombiner: Model components
-            encoder_class: Encoder class to instantiate
-            decoder_class: Decoder class to instantiate
-            bit_lengths: List of bit lengths to test
-            alpha: Watermark strength
-            compute_metrics_fn: Metrics computation function
-            
+            images (torch.Tensor): Original images tensor.
+            vae: VAE wrapper module.
+            splitter: Latent splitter module.
+            recombiner: Latent recombiner module.
+            encoder_class: Class reference for the encoder to instantiate.
+            decoder_class: Class reference for the decoder to instantiate.
+            bit_lengths (Optional[List[int]]): List of dimension lengths to test.
+            alpha (float): Watermark strength scaling factor.
+            compute_metrics_fn (Optional[Callable]): Optional function to compute PSNR and SSIM.
+
         Returns:
-            AblationResult with metrics for each bit length
+            AblationResult: Collected metrics for each watermark bit length.
         """
         if bit_lengths is None:
             bit_lengths = [16, 32, 64, 128, 256]
@@ -322,16 +315,11 @@ class AblationStudy:
         print("Ablating watermark bit length...")
         
         for w_dim in tqdm(bit_lengths, desc="Bit lengths"):
-            # Create encoders/decoders for this bit length
             encoder_l = encoder_class(watermark_dim=w_dim).to(self.device)
             encoder_h = encoder_class(watermark_dim=w_dim).to(self.device)
             decoder_l = decoder_class(watermark_dim=w_dim).to(self.device)
             decoder_h = decoder_class(watermark_dim=w_dim).to(self.device)
             
-            # Note: These are untrained - in practice, you'd need to train for each length
-            # For ablation, we use initialized weights to see capacity/difficulty trends
-            
-            # Generate watermark of current length
             B = images.shape[0]
             watermark = torch.randn(B, w_dim, device=self.device)
             
@@ -344,7 +332,6 @@ class AblationStudy:
             
             images_wm = vae.decode(z_wm)
             
-            # Compute metrics
             if compute_metrics_fn:
                 metrics = compute_metrics_fn(images, images_wm)
                 psnr = metrics['psnr'].mean if hasattr(metrics['psnr'], 'mean') else metrics['psnr']
@@ -357,7 +344,6 @@ class AblationStudy:
             psnr_values.append(psnr)
             ssim_values.append(ssim)
             
-            # Extract and evaluate
             z_wm_low, z_wm_high = splitter(z_wm)
             w_pred_l = decoder_l(z_wm_low)
             w_pred_h = decoder_h(z_wm_high)
@@ -370,7 +356,6 @@ class AblationStudy:
             bit_acc_values.append(bit_acc)
             ber_values.append(1 - bit_acc)
             
-            # Clean up
             del encoder_l, encoder_h, decoder_l, decoder_h
             
         return AblationResult(
@@ -388,20 +373,18 @@ class AblationStudy:
         save_suffix: str = "",
         figsize: Tuple[int, int] = (14, 5)
     ):
-        """
-        Plot ablation study results.
-        
+        """Generates bar plots showing the ablation metrics.
+
         Args:
-            results: AblationResult to plot
-            save_suffix: Suffix for saved figure filename
-            figsize: Figure size
+            results (AblationResult): Ablation results container.
+            save_suffix (str): Appended to the output file path.
+            figsize (Tuple[int, int]): Size dimensions of the figure.
         """
         fig, axes = plt.subplots(1, 3, figsize=figsize)
         
         x = range(len(results.parameter_values))
         labels = [str(v) for v in results.parameter_values]
         
-        # PSNR plot
         ax1 = axes[0]
         ax1.bar(x, results.psnr_values, color='steelblue', alpha=0.7)
         ax1.axhline(y=40, color='red', linestyle='--', label='Target (40 dB)')
@@ -413,7 +396,6 @@ class AblationStudy:
         ax1.legend()
         ax1.grid(True, alpha=0.3, axis='y')
         
-        # SSIM plot
         ax2 = axes[1]
         ax2.bar(x, results.ssim_values, color='seagreen', alpha=0.7)
         ax2.axhline(y=0.91, color='red', linestyle='--', label='Target (0.91)')
@@ -425,7 +407,6 @@ class AblationStudy:
         ax2.legend()
         ax2.grid(True, alpha=0.3, axis='y')
         
-        # Bit accuracy plot
         ax3 = axes[2]
         ax3.bar(x, results.bit_accuracy_values, color='coral', alpha=0.7)
         ax3.axhline(y=0.95, color='red', linestyle='--', label='Target (95%)')
@@ -450,22 +431,24 @@ class AblationStudy:
         results: AblationResult,
         save_suffix: str = ""
     ):
-        """
-        Plot trade-off curves between quality and robustness.
-        
+        """Generates curves depicting the trade-offs between image quality and accuracy.
+
         Args:
-            results: AblationResult to plot
-            save_suffix: Suffix for saved filename
+            results (AblationResult): Ablation results container.
+            save_suffix (str): Appended to the output file path.
         """
         fig, axes = plt.subplots(1, 2, figsize=(12, 5))
         
-        # PSNR vs Bit Accuracy
         ax1 = axes[0]
         ax1.plot(results.psnr_values, results.bit_accuracy_values, 'o-', markersize=10)
         for i, label in enumerate(results.parameter_values):
-            ax1.annotate(str(label), 
-                        (results.psnr_values[i], results.bit_accuracy_values[i]),
-                        textcoords="offset points", xytext=(5, 5), fontsize=9)
+            ax1.annotate(
+                str(label), 
+                (results.psnr_values[i], results.bit_accuracy_values[i]),
+                textcoords="offset points", 
+                xytext=(5, 5), 
+                fontsize=9
+            )
         ax1.axhline(y=0.95, color='green', linestyle='--', alpha=0.5)
         ax1.axvline(x=40, color='blue', linestyle='--', alpha=0.5)
         ax1.fill_between([40, ax1.get_xlim()[1]], 0.95, 1.0, alpha=0.1, color='green')
@@ -474,13 +457,16 @@ class AblationStudy:
         ax1.set_title('Quality-Robustness Trade-off')
         ax1.grid(True, alpha=0.3)
         
-        # SSIM vs Bit Accuracy
         ax2 = axes[1]
         ax2.plot(results.ssim_values, results.bit_accuracy_values, 'o-', markersize=10, color='orange')
         for i, label in enumerate(results.parameter_values):
-            ax2.annotate(str(label),
-                        (results.ssim_values[i], results.bit_accuracy_values[i]),
-                        textcoords="offset points", xytext=(5, 5), fontsize=9)
+            ax2.annotate(
+                str(label),
+                (results.ssim_values[i], results.bit_accuracy_values[i]),
+                textcoords="offset points", 
+                xytext=(5, 5), 
+                fontsize=9
+            )
         ax2.axhline(y=0.95, color='green', linestyle='--', alpha=0.5)
         ax2.axvline(x=0.91, color='blue', linestyle='--', alpha=0.5)
         ax2.set_xlabel('SSIM')
@@ -499,17 +485,16 @@ class AblationStudy:
     def generate_ablation_report(
         self,
         results_list: List[AblationResult],
-        save_path: str = None
+        save_path: Optional[str] = None
     ) -> str:
-        """
-        Generate comprehensive ablation report.
-        
+        """Compiles a text-based ablation study report and saves it.
+
         Args:
-            results_list: List of AblationResult objects
-            save_path: Path to save report
-            
+            results_list (List[AblationResult]): List of collected ablation studies.
+            save_path (Optional[str]): Custom path for saving the text file.
+
         Returns:
-            Report string
+            str: The full text report content.
         """
         lines = []
         lines.append("=" * 80)
@@ -520,7 +505,6 @@ class AblationStudy:
             lines.append(f"\n\n{result.parameter_name}")
             lines.append("-" * 40)
             
-            # Table header
             lines.append(f"{'Value':<20} {'PSNR':>10} {'SSIM':>10} {'BitAcc':>10} {'BER':>10}")
             lines.append("-" * 60)
             
@@ -533,9 +517,8 @@ class AblationStudy:
                     f"{result.ber_values[i]:>10.4f}"
                 )
                 
-            # Best configuration
             best_idx = result.best_tradeoff(psnr_threshold=40.0, ssim_threshold=0.91)
-            lines.append(f"\nBest configuration meeting PSNR≥40dB, SSIM≥0.91:")
+            lines.append("\nBest configuration meeting PSNR≥40dB, SSIM≥0.91:")
             lines.append(f"  {result.parameter_name} = {result.parameter_values[best_idx]}")
             lines.append(f"  PSNR: {result.psnr_values[best_idx]:.2f} dB")
             lines.append(f"  SSIM: {result.ssim_values[best_idx]:.4f}")

@@ -1,20 +1,17 @@
-"""
-Statistical Analysis Module for Watermark Evaluation.
+"""Statistical Analysis Module for Watermark Evaluation.
 
-Provides:
-- Confidence intervals (95%)
-- Statistical significance testing (t-test, bootstrap)
-- Detection threshold calibration
-- Trade-off analysis between imperceptibility and robustness
+Provides descriptive statistics, confidence intervals (t-distribution and bootstrap),
+statistical hypothesis testing (t-test, Wilcoxon, Mann-Whitney), detection
+threshold calibration, and Pareto frontier trade-off analysis.
 """
 
-import torch
-import numpy as np
-from scipy import stats
-from typing import Dict, List, Tuple, Optional
-import matplotlib.pyplot as plt
 import os
 from dataclasses import dataclass
+from typing import Dict, List, Optional, Tuple
+
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy import stats
 
 
 @dataclass
@@ -28,7 +25,7 @@ class ConfidenceInterval:
     n_samples: int
     
     def __repr__(self):
-        return f"{self.mean:.4f} [{self.ci_lower:.4f}, {self.ci_upper:.4f}] (95% CI, n={self.n_samples})"
+        return f"{self.mean:.4f} [{self.ci_lower:.4f}, {self.ci_upper:.4f}] ({int(self.confidence_level * 100)}% CI, n={self.n_samples})"
 
 
 @dataclass
@@ -47,11 +44,14 @@ class StatisticalTest:
 
 
 class StatisticalAnalysis:
-    """
-    Statistical analysis tools for watermark evaluation.
-    """
+    """Statistical analysis tools for watermark evaluation."""
     
     def __init__(self, output_dir: str = "results/statistics"):
+        """Initializes the StatisticalAnalysis class.
+
+        Args:
+            output_dir (str): Directory for saving reports and plots.
+        """
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
         
@@ -60,24 +60,20 @@ class StatisticalAnalysis:
         values: np.ndarray,
         confidence: float = 0.95
     ) -> ConfidenceInterval:
-        """
-        Compute confidence interval for a set of values.
-        
-        Uses t-distribution for small samples, normal for large.
-        
+        """Computes the confidence interval using a Student's t-distribution.
+
         Args:
-            values: Array of values
-            confidence: Confidence level (default 0.95 for 95% CI)
-            
+            values (np.ndarray): Array of sample values.
+            confidence (float): Confidence level fraction (default 0.95).
+
         Returns:
-            ConfidenceInterval object
+            ConfidenceInterval: Calculated interval parameters.
         """
         n = len(values)
         mean = np.mean(values)
         std = np.std(values, ddof=1)
         se = std / np.sqrt(n)
         
-        # Use t-distribution for confidence interval
         alpha = 1 - confidence
         t_crit = stats.t.ppf(1 - alpha/2, df=n-1)
         
@@ -100,23 +96,20 @@ class StatisticalAnalysis:
         n_bootstrap: int = 10000,
         statistic: str = 'mean'
     ) -> ConfidenceInterval:
-        """
-        Compute bootstrap confidence interval.
-        
-        Non-parametric method that doesn't assume normality.
-        
+        """Computes confidence interval using bootstrap resampling.
+
+        Useful for non-normal distributions.
+
         Args:
-            values: Array of values
-            confidence: Confidence level
-            n_bootstrap: Number of bootstrap samples
-            statistic: Statistic to compute ('mean', 'median')
-            
+            values (np.ndarray): Array of sample values.
+            confidence (float): Confidence level fraction (default 0.95).
+            n_bootstrap (int): Number of resampling iterations.
+            statistic (str): Metric to compute ('mean' or 'median').
+
         Returns:
-            ConfidenceInterval object
+            ConfidenceInterval: Calculated bootstrap interval.
         """
         n = len(values)
-        
-        # Generate bootstrap samples
         bootstrap_stats = []
         for _ in range(n_bootstrap):
             sample = np.random.choice(values, size=n, replace=True)
@@ -127,7 +120,6 @@ class StatisticalAnalysis:
                 
         bootstrap_stats = np.array(bootstrap_stats)
         
-        # Compute percentile CI
         alpha = 1 - confidence
         ci_lower = np.percentile(bootstrap_stats, 100 * alpha / 2)
         ci_upper = np.percentile(bootstrap_stats, 100 * (1 - alpha / 2))
@@ -153,17 +145,16 @@ class StatisticalAnalysis:
         paired: bool = False,
         alpha: float = 0.05
     ) -> StatisticalTest:
-        """
-        Perform t-test for comparing two groups.
-        
+        """Performs a paired or independent Student's t-test.
+
         Args:
-            values1: First group values
-            values2: Second group values (baseline)
-            paired: Whether samples are paired
-            alpha: Significance level
-            
+            values1 (np.ndarray): First group values.
+            values2 (np.ndarray): Second group (or baseline) values.
+            paired (bool): Whether the test samples are paired.
+            alpha (float): Significance level (default 0.05).
+
         Returns:
-            StatisticalTest object
+            StatisticalTest: T-test outcomes and Cohen's d effect size.
         """
         if paired:
             statistic, p_value = stats.ttest_rel(values1, values2)
@@ -172,7 +163,6 @@ class StatisticalAnalysis:
             statistic, p_value = stats.ttest_ind(values1, values2)
             test_name = "Independent t-test"
             
-        # Cohen's d effect size
         pooled_std = np.sqrt((np.var(values1, ddof=1) + np.var(values2, ddof=1)) / 2)
         effect_size = (np.mean(values1) - np.mean(values2)) / (pooled_std + 1e-8)
         
@@ -191,22 +181,22 @@ class StatisticalAnalysis:
         values2: np.ndarray,
         alpha: float = 0.05
     ) -> StatisticalTest:
-        """
-        Perform Wilcoxon signed-rank test (non-parametric paired test).
-        
+        """Performs a Wilcoxon signed-rank test.
+
+        Non-parametric paired comparison.
+
         Args:
-            values1: First group values
-            values2: Second group values
-            alpha: Significance level
-            
+            values1 (np.ndarray): First group values.
+            values2 (np.ndarray): Second group values.
+            alpha (float): Significance level.
+
         Returns:
-            StatisticalTest object
+            StatisticalTest: Non-parametric test results.
         """
         statistic, p_value = stats.wilcoxon(values1, values2)
         
-        # Effect size: r = Z / sqrt(N)
         n = len(values1)
-        z = stats.norm.ppf(1 - p_value/2)  # Approximate Z from p-value
+        z = stats.norm.ppf(1 - p_value/2)
         effect_size = z / np.sqrt(n)
         
         return StatisticalTest(
@@ -224,20 +214,20 @@ class StatisticalAnalysis:
         values2: np.ndarray,
         alpha: float = 0.05
     ) -> StatisticalTest:
-        """
-        Perform Mann-Whitney U test (non-parametric independent test).
-        
+        """Performs a Mann-Whitney U test.
+
+        Non-parametric independent group comparison.
+
         Args:
-            values1: First group values
-            values2: Second group values
-            alpha: Significance level
-            
+            values1 (np.ndarray): First group values.
+            values2 (np.ndarray): Second group values.
+            alpha (float): Significance level.
+
         Returns:
-            StatisticalTest object
+            StatisticalTest: Non-parametric test results.
         """
         statistic, p_value = stats.mannwhitneyu(values1, values2, alternative='two-sided')
         
-        # Effect size: r = 1 - (2U)/(n1*n2)
         n1, n2 = len(values1), len(values2)
         effect_size = 1 - (2 * statistic) / (n1 * n2)
         
@@ -256,27 +246,24 @@ class StatisticalAnalysis:
         non_watermark_scores: np.ndarray,
         target_fpr: float = 0.01
     ) -> Tuple[float, Dict]:
-        """
-        Calibrate detection threshold for a target false positive rate.
-        
+        """Calibrates detection threshold for a target False Positive Rate (FPR).
+
         Args:
-            watermark_scores: Similarity scores for watermarked images
-            non_watermark_scores: Similarity scores for non-watermarked images
-            target_fpr: Target false positive rate (default 1%)
-            
+            watermark_scores (np.ndarray): Scores of watermarked images.
+            non_watermark_scores (np.ndarray): Scores of non-watermarked images.
+            target_fpr (float): Maximum acceptable false positive rate.
+
         Returns:
-            threshold: Calibrated threshold
-            metrics: Dictionary with TPR, FPR at threshold
+            Tuple[float, Dict]: Optimal threshold and its achieved metrics.
         """
-        # Sort scores and find threshold
         thresholds = np.linspace(
             min(non_watermark_scores.min(), watermark_scores.min()),
             max(non_watermark_scores.max(), watermark_scores.max()),
             1000
         )
         
-        best_threshold = 0
-        best_tpr = 0
+        best_threshold = 0.0
+        best_tpr = 0.0
         achieved_fpr = 1.0
         
         for thresh in thresholds:
@@ -288,8 +275,7 @@ class StatisticalAnalysis:
                 best_tpr = tpr
                 achieved_fpr = fpr
                 
-        # If we couldn't achieve target FPR, use the highest threshold
-        if best_threshold == 0:
+        if best_threshold == 0.0:
             best_threshold = np.percentile(non_watermark_scores, 100 * (1 - target_fpr))
             achieved_fpr = np.mean(non_watermark_scores > best_threshold)
             best_tpr = np.mean(watermark_scores > best_threshold)
@@ -300,38 +286,35 @@ class StatisticalAnalysis:
             "fpr": achieved_fpr,
             "target_fpr": target_fpr
         }
-        
         return best_threshold, metrics
         
     def analyze_tradeoff(
         self,
-        imperceptibility_scores: np.ndarray,  # e.g., PSNR or SSIM
-        robustness_scores: np.ndarray,  # e.g., Bit accuracy after attack
-        method_names: List[str] = None,
+        imperceptibility_scores: np.ndarray,
+        robustness_scores: np.ndarray,
+        method_names: Optional[List[str]] = None,
         metric_names: Tuple[str, str] = ("PSNR", "Bit Accuracy")
     ) -> Dict:
-        """
-        Analyze trade-off between imperceptibility and robustness.
-        
+        """Analyzes trade-offs between imperceptibility and robustness.
+
+        Computes Pearson/Spearman correlations and identifies non-dominated Pareto frontier points.
+
         Args:
-            imperceptibility_scores: Array of imperceptibility scores
-            robustness_scores: Array of robustness scores
-            method_names: Names of different methods/configurations
-            metric_names: Names of the metrics
-            
+            imperceptibility_scores (np.ndarray): Quality values.
+            robustness_scores (np.ndarray): Robustness accuracy values.
+            method_names (Optional[List[str]]): Optional configuration name labels.
+            metric_names (Tuple[str, str]): Label titles for quality and robustness.
+
         Returns:
-            Dictionary with analysis results
+            Dict: Correlation outputs and Pareto optimal indices/coordinates.
         """
-        # Correlation analysis
         pearson_r, pearson_p = stats.pearsonr(imperceptibility_scores, robustness_scores)
         spearman_r, spearman_p = stats.spearmanr(imperceptibility_scores, robustness_scores)
         
-        # Pareto frontier (non-dominated points)
         pareto_mask = np.ones(len(imperceptibility_scores), dtype=bool)
         for i in range(len(imperceptibility_scores)):
             for j in range(len(imperceptibility_scores)):
                 if i != j:
-                    # Point j dominates point i if j is better in both metrics
                     if (imperceptibility_scores[j] >= imperceptibility_scores[i] and
                         robustness_scores[j] >= robustness_scores[i] and
                         (imperceptibility_scores[j] > imperceptibility_scores[i] or
@@ -351,7 +334,6 @@ class StatisticalAnalysis:
             "pareto_robustness": robustness_scores[pareto_indices],
             "metric_names": metric_names
         }
-        
         return results
         
     def plot_tradeoff(
@@ -359,34 +341,29 @@ class StatisticalAnalysis:
         tradeoff_results: Dict,
         imperceptibility_scores: np.ndarray,
         robustness_scores: np.ndarray,
-        method_names: List[str] = None,
-        save_path: str = None
+        method_names: Optional[List[str]] = None,
+        save_path: Optional[str] = None
     ):
-        """
-        Plot trade-off analysis results.
-        
+        """Plots imperceptibility vs robustness scatter and Pareto frontier curves.
+
         Args:
-            tradeoff_results: Results from analyze_tradeoff
-            imperceptibility_scores: Array of imperceptibility scores
-            robustness_scores: Array of robustness scores
-            method_names: Names for each point
-            save_path: Path to save plot
+            tradeoff_results (Dict): Results from analyze_tradeoff.
+            imperceptibility_scores (np.ndarray): Original quality metric array.
+            robustness_scores (np.ndarray): Original robustness metric array.
+            method_names (Optional[List[str]]): Optional text labels for points.
+            save_path (Optional[str]): Output file path.
         """
         fig, ax = plt.subplots(figsize=(10, 8))
         
-        # Plot all points
         ax.scatter(imperceptibility_scores, robustness_scores, s=100, alpha=0.6, label='All configurations')
         
-        # Highlight Pareto frontier
         pareto_imp = tradeoff_results['pareto_imperceptibility']
         pareto_rob = tradeoff_results['pareto_robustness']
         
-        # Sort by imperceptibility for line plot
         sort_idx = np.argsort(pareto_imp)
         ax.plot(pareto_imp[sort_idx], pareto_rob[sort_idx], 'r-', linewidth=2, label='Pareto frontier')
         ax.scatter(pareto_imp, pareto_rob, s=150, c='red', marker='*', label='Pareto optimal')
         
-        # Add labels if provided
         if method_names:
             for i, name in enumerate(method_names):
                 ax.annotate(name, (imperceptibility_scores[i], robustness_scores[i]),
@@ -397,7 +374,6 @@ class StatisticalAnalysis:
         ax.set_ylabel(metric_names[1], fontsize=12)
         ax.set_title(f'Trade-off Analysis: {metric_names[0]} vs {metric_names[1]}', fontsize=14)
         
-        # Add correlation info
         corr_text = f"Pearson r = {tradeoff_results['pearson_correlation']:.3f} (p = {tradeoff_results['pearson_p_value']:.3e})"
         ax.text(0.05, 0.95, corr_text, transform=ax.transAxes, fontsize=10,
                verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
@@ -417,26 +393,24 @@ class StatisticalAnalysis:
     def generate_statistics_report(
         self,
         metric_values: Dict[str, np.ndarray],
-        baseline_values: Dict[str, np.ndarray] = None,
-        save_path: str = None
+        baseline_values: Optional[Dict[str, np.ndarray]] = None,
+        save_path: Optional[str] = None
     ) -> str:
-        """
-        Generate comprehensive statistics report.
-        
+        """Generates descriptive statistics and significance tests reports.
+
         Args:
-            metric_values: Dictionary of metric name -> values
-            baseline_values: Optional baseline values for comparison
-            save_path: Path to save report
-            
+            metric_values (Dict[str, np.ndarray]): Evaluated metrics.
+            baseline_values (Optional[Dict[str, np.ndarray]]): Baseline metrics.
+            save_path (Optional[str]): Output report path.
+
         Returns:
-            Report string
+            str: Compiled report contents.
         """
         lines = []
         lines.append("=" * 80)
         lines.append("STATISTICAL ANALYSIS REPORT")
         lines.append("=" * 80)
         
-        # Confidence intervals for each metric
         lines.append("\n1. DESCRIPTIVE STATISTICS (95% CI)")
         lines.append("-" * 40)
         
@@ -447,7 +421,6 @@ class StatisticalAnalysis:
             lines.append(f"  95% CI: [{ci.ci_lower:.4f}, {ci.ci_upper:.4f}]")
             lines.append(f"  n = {ci.n_samples}")
             
-        # Statistical tests vs baseline
         if baseline_values:
             lines.append("\n\n2. STATISTICAL SIGNIFICANCE VS BASELINE")
             lines.append("-" * 40)
@@ -457,12 +430,10 @@ class StatisticalAnalysis:
                     values = metric_values[metric_name]
                     baseline = baseline_values[metric_name]
                     
-                    # T-test
                     t_result = self.t_test(values, baseline)
                     lines.append(f"\n{metric_name}:")
                     lines.append(f"  {t_result}")
                     
-                    # Effect interpretation
                     if abs(t_result.effect_size) < 0.2:
                         effect_interp = "negligible"
                     elif abs(t_result.effect_size) < 0.5:

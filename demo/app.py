@@ -1,16 +1,23 @@
+"""Streamlit web application demo for BiSLW.
+
+Allows users to upload images, inject watermarks in the latent space, simulate various
+attacks (JPEG compression, noise, blur), and extract the decoded watermark.
+"""
+
 import os
+from typing import Optional, Tuple
 import sys
+
+from PIL import Image
+import numpy as np
 import torch
 import torch.nn.functional as F
-import numpy as np
-from PIL import Image
 
 # Ensure project root is in sys.path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-# Check if streamlit is available
 try:
     import streamlit as st
     HAS_STREAMLIT = True
@@ -19,12 +26,23 @@ except ImportError:
 
 from models.latent_split import LatentSplitter
 from models.recombination import LatentRecombiner
-from models.watermark_encoder import WatermarkEncoder
-from models.watermark_decoder import WatermarkDecoder
 from models.vae_wrapper import VAEWrapper
+from models.watermark_decoder import WatermarkDecoder
+from models.watermark_encoder import WatermarkEncoder
 
-# Helper functions
-def load_image(uploaded_file, size=256, device='cpu'):
+
+def load_image(uploaded_file, size: int = 256, device: str = 'cpu') -> Tuple[torch.Tensor, Image.Image]:
+    """Loads, center-crops, and resizes an uploaded image to normalized tensor range.
+
+    Args:
+        uploaded_file: Streamlit file uploader buffer.
+        size (int): Targeted square size of the image.
+        device (str): Destination torch device.
+
+    Returns:
+        Tuple[torch.Tensor, Image.Image]: Normalized tensor of shape (1, C, H, W)
+            and the loaded PIL Image object.
+    """
     img = Image.open(uploaded_file).convert('RGB')
     w, h = img.size
     min_dim = min(w, h)
@@ -37,12 +55,30 @@ def load_image(uploaded_file, size=256, device='cpu'):
     img_tensor = img_tensor * 2 - 1
     return img_tensor.to(device), img
 
-def get_image_download_link(tensor, filename="output.png"):
-    img_np = ((tensor.squeeze(0).permute(1, 2, 0).cpu().numpy() + 1) / 2 * 255).clip(0, 255).astype(np.uint8)
-    pil_img = Image.fromarray(img_np)
-    return pil_img
 
-def jpeg_attack(images, quality=70):
+def get_image_download_link(tensor: torch.Tensor) -> Image.Image:
+    """Converts a normalized image tensor back to a PIL image.
+
+    Args:
+        tensor (torch.Tensor): Image tensor of shape (1, C, H, W) in range [-1, 1].
+
+    Returns:
+        Image.Image: The resulting PIL image.
+    """
+    img_np = ((tensor.squeeze(0).permute(1, 2, 0).cpu().numpy() + 1) / 2 * 255).clip(0, 255).astype(np.uint8)
+    return Image.fromarray(img_np)
+
+
+def jpeg_attack(images: torch.Tensor, quality: int = 70) -> torch.Tensor:
+    """Applies a differentiable downsampling/upsampling JPEG approximation.
+
+    Args:
+        images (torch.Tensor): Input images of shape (B, C, H, W).
+        quality (int): Simulated quality factor (1-100).
+
+    Returns:
+        torch.Tensor: Sim-attacked image tensor.
+    """
     scale_factor = max(0.3, quality / 100)
     B, C, H, W = images.shape
     h_small = max(8, int(H * scale_factor))
@@ -50,9 +86,11 @@ def jpeg_attack(images, quality=70):
     down = F.interpolate(images, size=(h_small, w_small), mode='bilinear', align_corners=False)
     up = F.interpolate(down, size=(H, W), mode='bilinear', align_corners=False)
     blend = quality / 100
-    return blend * images + (1 - blend) * up
+    return blend * images + (1.0 - blend) * up
+
 
 def main_streamlit():
+    """Main Streamlit application interface execution."""
     st.set_page_config(page_title="BiSLW Demo", layout="wide")
     st.title("BiSLW: Bi-Spectral Latent Watermarking Demo")
     st.markdown("Encode and decode watermarks into Stable Diffusion v1.5 VAE latent space with high robustness.")
@@ -60,7 +98,6 @@ def main_streamlit():
     device = torch.device('cuda' if torch.cuda.is_available() else 
                           'mps' if torch.backends.mps.is_available() else 'cpu')
 
-    # Load VAE and Models
     @st.cache_resource
     def load_models():
         vae = VAEWrapper().to(device)
@@ -92,12 +129,16 @@ def main_streamlit():
         st.error(f"Error loading models/checkpoints: {e}. Please run from repository root.")
         return
 
-    # Sidebar parameters
     st.sidebar.header("Parameters")
     attack_type = st.sidebar.selectbox("Attack Type", ["None", "JPEG Compression", "Gaussian Noise", "Blur"])
-    attack_severity = st.sidebar.slider("Attack Strength / Parameter", 10, 100, 70) if attack_type == "JPEG Compression" else st.sidebar.slider("Attack Severity", 0.0, 0.2, 0.05) if attack_type == "Gaussian Noise" else st.sidebar.slider("Blur Kernel Size", 3, 15, 5, step=2)
+    
+    if attack_type == "JPEG Compression":
+        attack_severity = st.sidebar.slider("Attack Strength / Parameter", 10, 100, 70)
+    elif attack_type == "Gaussian Noise":
+        attack_severity = st.sidebar.slider("Attack Severity", 0.0, 0.2, 0.05)
+    else:
+        attack_severity = st.sidebar.slider("Blur Kernel Size", 3, 15, 5, step=2)
 
-    # 1. Upload
     st.header("Step 1: Upload Image")
     uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "png", "jpeg"])
 
@@ -108,7 +149,6 @@ def main_streamlit():
         with col1:
             st.image(orig_pil, caption="Original Image (Resized to 256x256)", use_container_width=True)
 
-        # 2. Encode Watermark
         st.header("Step 2: Watermark Injection")
         w_true = torch.randn(1, w_dim, device=device)
         w_true = (w_true > 0).float() * 2 - 1
@@ -130,7 +170,6 @@ def main_streamlit():
         psnr = 10 * np.log10(4.0 / (mse + 1e-10))
         st.success(f"Watermark embedded. Image Quality PSNR: **{psnr:.2f} dB**")
 
-        # 3. Apply Attack
         st.header("Step 3: Attack Simulation")
         if attack_type == "JPEG Compression":
             img_att = jpeg_attack(img_wm, attack_severity)
@@ -145,7 +184,6 @@ def main_streamlit():
         with col3:
             st.image(att_pil, caption=f"Attacked Image ({attack_type})", use_container_width=True)
 
-        # 4. Decode Watermark
         st.header("Step 4: Watermark Extraction")
         z_att = vae.encode(img_att)
         z_att_l, z_att_h = splitter(z_att)
@@ -162,10 +200,13 @@ def main_streamlit():
         else:
             st.warning("Watermark could not be verified (Accuracy below 75%).")
 
+
 def main_cli():
+    """Fallback interactive instructions if Streamlit is missing."""
     print("Streamlit is not installed. To run the visual demo, run: pip install streamlit && streamlit run demo/app.py")
     print("Starting CLI interactive demo...")
     print("To run, please execute: python demo/inference.py --image <path_to_image>")
+
 
 if __name__ == '__main__':
     if HAS_STREAMLIT:

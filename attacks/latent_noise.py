@@ -2,8 +2,11 @@ import torch
 import torch.nn as nn
 
 class LatentNoiseAttack(nn.Module):
-    """
-    Adds Gaussian noise to latents.
+    """Applies additive Gaussian noise to latent representations during training.
+    
+    Args:
+        std_min (float): Minimum standard deviation of the noise.
+        std_max (float): Maximum standard deviation of the noise.
     """
     def __init__(self, std_min=0.0, std_max=0.1):
         super().__init__()
@@ -11,6 +14,14 @@ class LatentNoiseAttack(nn.Module):
         self.std_max = std_max
 
     def forward(self, z):
+        """Applies random Gaussian noise to latents.
+        
+        Args:
+            z (torch.Tensor): Input latent tensor of shape (B, C, H, W).
+            
+        Returns:
+            torch.Tensor: Noisy latent tensor of shape (B, C, H, W).
+        """
         if not self.training:
             return z
             
