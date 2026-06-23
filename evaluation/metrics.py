@@ -479,6 +479,61 @@ class ImageQualityMetrics(nn.Module):
     def _ensure_fid(self):
         if self.fid is None:
             self.fid = FID().to(self.device)
+
+    def _ensure_sifid(self):
+        if not hasattr(self, 'sifid') or self.sifid is None:
+            self.sifid = SIFID().to(self.device)
+            class SIFID(nn.Module):
+                """
+                Single Image Fréchet Inception Distance (SIFID).
+                Measures the distance between feature distributions of a single real and generated image.
+                """
+                def __init__(self, dims: int = 2048):
+                    super().__init__()
+                    self.dims = dims
+                    from torchvision.models import inception_v3, Inception_V3_Weights
+                    self.inception = inception_v3(weights=Inception_V3_Weights.DEFAULT, transform_input=False)
+                    self.inception.eval()
+                    self.inception.fc = nn.Identity()
+                    for param in self.inception.parameters():
+                        param.requires_grad = False
+                    self.register_buffer('mean', torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
+                    self.register_buffer('std', torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
+
+                def _normalize(self, x: torch.Tensor) -> torch.Tensor:
+                    x = (x + 1) / 2
+                    return (x - self.mean.to(x.device)) / self.std.to(x.device)
+
+                @torch.no_grad()
+                def compute_features(self, image: torch.Tensor) -> torch.Tensor:
+                    image = F.interpolate(image, size=(299, 299), mode='bilinear', align_corners=False)
+                    image = self._normalize(image)
+                    features = self.inception(image)
+                    return features
+
+                @torch.no_grad()
+                def forward(self, real_image: torch.Tensor, generated_image: torch.Tensor) -> float:
+                    real_feat = self.compute_features(real_image.unsqueeze(0))
+                    gen_feat = self.compute_features(generated_image.unsqueeze(0))
+                    mu1 = real_feat.squeeze(0)
+                    mu2 = gen_feat.squeeze(0)
+                    diff = mu1 - mu2
+                    return float(diff @ diff)
+                @torch.no_grad()
+                def compute_sifid(self, original: torch.Tensor, watermarked: torch.Tensor) -> MetricResult:
+                    self._ensure_sifid()
+                    values = []
+                    for i in range(original.shape[0]):
+                        val = self.sifid(original[i], watermarked[i])
+                        values.append(val)
+                    values = torch.tensor(values)
+                    values_list = values.cpu().tolist()
+                    return MetricResult(
+                        mean=float(values.mean()),
+                        std=float(values.std()),
+                        values=values_list,
+                        name="SIFID"
+                    )
             
     @torch.no_grad()
     def compute_psnr(

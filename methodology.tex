@@ -1,0 +1,264 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage[margin=1in]{geometry}
+
+\title{BiSLW: BiSpectral Latent Watermarking for Generative Diffusion Models: Methodology}
+\author{}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\section{Problem Formulation}
+
+Given an input image $\mathbf{x} \in \mathbb{R}^{H \times W \times 3}$ and a watermark message $\mathbf{w} \in \mathbb{R}^{d_w}$ (where $d_w$ is the watermark dimension), our objective is to embed $\mathbf{w}$ into the latent representation of $\mathbf{x}$ such that:
+
+\begin{enumerate}
+    \item \textbf{Imperceptibility}: The watermarked image $\tilde{\mathbf{x}}$ is visually indistinguishable from $\mathbf{x}$
+    \item \textbf{Extractability}: The watermark $\mathbf{w}$ can be reliably recovered from $\tilde{\mathbf{x}}$
+    \item \textbf{Robustness}: The watermark survives common image manipulations and attacks
+\end{enumerate}
+
+\section{System Overview}
+
+Our framework operates entirely in the latent space of a pre-trained Variational Autoencoder (VAE) from Stable Diffusion v1.5. Let $\mathcal{E}: \mathbb{R}^{H \times W \times 3} \rightarrow \mathbb{R}^{h \times w \times c}$ denote the VAE encoder and $\mathcal{D}: \mathbb{R}^{h \times w \times c} \rightarrow \mathbb{R}^{H \times W \times 3}$ denote the VAE decoder, where $h = H/8$, $w = W/8$, and $c = 4$.
+
+The latent representation is computed as:
+\begin{equation}
+    \mathbf{z} = \mathcal{E}(\mathbf{x}) \cdot \gamma
+\end{equation}
+where $\gamma = 0.18215$ is the scaling factor for Stable Diffusion's VAE.
+
+\section{Dual-Band Frequency Decomposition}
+
+We decompose the latent representation into low-frequency and high-frequency components using the 2D Discrete Cosine Transform (DCT). This separation allows targeted watermark embedding that preserves global semantics while exploiting texture information.
+
+\subsection{DCT-II Transformation}
+
+For a latent tensor $\mathbf{z} \in \mathbb{R}^{B \times C \times H \times W}$, we apply the 2D DCT-II transform:
+\begin{equation}
+    \mathbf{Z}^{\text{freq}} = \mathbf{D}_H \cdot \mathbf{z} \cdot \mathbf{D}_W^{\top}
+\end{equation}
+where $\mathbf{D}_N \in \mathbb{R}^{N \times N}$ is the orthonormal DCT-II transform matrix defined as:
+\begin{equation}
+    D_{k,n} = \sqrt{\frac{2}{N}} \cos\left(\frac{\pi}{N}(n + 0.5)k\right) \cdot 
+    \begin{cases} 
+        \frac{1}{\sqrt{2}} & \text{if } k = 0 \\ 
+        1 & \text{otherwise} 
+    \end{cases}
+\end{equation}
+
+\subsection{Frequency Band Splitting}
+
+We partition the frequency spectrum using a binary mask $\mathbf{M} \in \{0, 1\}^{H \times W}$:
+\begin{equation}
+    M_{i,j} = 
+    \begin{cases} 
+        1 & \text{if } i < H/2 \text{ and } j < W/2 \\ 
+        0 & \text{otherwise} 
+    \end{cases}
+\end{equation}
+
+The low-frequency and high-frequency components are obtained as:
+\begin{align}
+    \mathbf{z}^{\text{low}} &= \mathbf{Z}^{\text{freq}} \odot \mathbf{M} \\
+    \mathbf{z}^{\text{high}} &= \mathbf{Z}^{\text{freq}} \odot (1 - \mathbf{M})
+\end{align}
+where $\odot$ denotes element-wise multiplication.
+
+\section{Watermark Encoding}
+
+We employ two independent lightweight encoders, $E_L$ and $E_H$, to inject the watermark into each frequency band. The encoders learn a perturbation function $\Delta$ that modifies the latent while minimizing perceptual distortion.
+
+\subsection{Encoder Architecture}
+
+Each encoder $E_{\{L,H\}}: \mathbb{R}^{C \times H \times W} \times \mathbb{R}^{d_w} \rightarrow \mathbb{R}^{C \times H \times W}$ takes a frequency band and watermark as input:
+\begin{equation}
+    E(z, \mathbf{w}) = z + \alpha \cdot \Delta_\theta(z, \mathbf{w})
+\end{equation}
+where $\alpha$ is the injection strength and $\Delta_\theta$ is a neural network parameterized by $\theta$.
+
+The perturbation network is defined as:
+\begin{equation}
+    \Delta_\theta(z, \mathbf{w}) = \text{Conv}_{1 \times 1}\left(\sigma\left(\text{Conv}_{1 \times 1}\left(\sigma\left(\text{GN}\left(\text{Conv}_{3 \times 3}([z; \mathbf{w}^{\uparrow}])\right)\right)\right)\right)\right)
+\end{equation}
+where:
+\begin{itemize}
+    \item $[z; \mathbf{w}^{\uparrow}]$ denotes concatenation of $z$ with spatially expanded watermark $\mathbf{w}^{\uparrow} \in \mathbb{R}^{d_w \times H \times W}$
+    \item $\text{GN}(\cdot)$ denotes Group Normalization
+    \item $\sigma(\cdot)$ denotes the SiLU activation function
+\end{itemize}
+
+The final layer is initialized to zero for training stability, ensuring $\Delta(z, \mathbf{w}) = 0$ at initialization.
+
+\subsection{Watermark Injection}
+
+The watermarked latent is constructed as:
+\begin{align}
+    \tilde{\mathbf{z}}^{\text{low}} &= E_L(\mathbf{z}^{\text{low}}, \mathbf{w}; \alpha_L) \\
+    \tilde{\mathbf{z}}^{\text{high}} &= E_H(\mathbf{z}^{\text{high}}, \mathbf{w}; \alpha_H)
+\end{align}
+where $\alpha_L$ and $\alpha_H$ are band-specific injection strengths (typically $\alpha_L > \alpha_H$ to prioritize low-frequency stability).
+
+\subsection{Latent Recombination}
+
+The watermarked latent in frequency domain is obtained by summation:
+\begin{equation}
+    \tilde{\mathbf{Z}}^{\text{freq}} = \tilde{\mathbf{z}}^{\text{low}} + \tilde{\mathbf{z}}^{\text{high}}
+\end{equation}
+
+The spatial-domain watermarked latent is recovered via inverse DCT:
+\begin{equation}
+    \tilde{\mathbf{z}} = \mathbf{D}_H^{\top} \cdot \tilde{\mathbf{Z}}^{\text{freq}} \cdot \mathbf{D}_W
+\end{equation}
+
+The watermarked image is then:
+\begin{equation}
+    \tilde{\mathbf{x}} = \mathcal{D}\left(\frac{\tilde{\mathbf{z}}}{\gamma}\right)
+\end{equation}
+
+\section{Watermark Decoding}
+
+We design spatially-invariant decoders $D_L$ and $D_H$ to extract watermarks from potentially attacked latents. The decoder architecture emphasizes global statistics rather than spatial features for robustness against geometric transformations.
+
+\subsection{Multi-Scale Global Pooling Decoder}
+
+The decoder extracts watermarks using multi-scale global statistics:
+\begin{equation}
+    D(\mathbf{z}) = \text{MLP}\left(\left[\phi_1(\mathbf{z}); \phi_2(\mathbf{z}); \phi_3(\mathbf{z}); \phi_{\text{raw}}(\mathbf{z})\right]\right)
+\end{equation}
+where each $\phi_i$ computes spatially-invariant features:
+\begin{equation}
+    \phi_i(\mathbf{z}) = \left[\mu(f_i(\mathbf{z})); \sigma(f_i(\mathbf{z}))\right]
+\end{equation}
+with $\mu(\cdot)$ and $\sigma(\cdot)$ denoting global mean and standard deviation pooling:
+\begin{align}
+    \mu(\mathbf{f}) &= \frac{1}{HW}\sum_{i,j} f_{i,j} \\
+    \sigma(\mathbf{f}) &= \sqrt{\frac{1}{HW}\sum_{i,j}(f_{i,j} - \mu(\mathbf{f}))^2 + \epsilon}
+\end{align}
+
+The multi-path feature extractors are:
+\begin{itemize}
+    \item \textbf{Path 1}: $f_1 = \sigma(\text{Conv}_{1 \times 1}(\mathbf{z}))$ --- direct channel transformation
+    \item \textbf{Path 2}: $f_2 = \sigma(\text{Conv}_{3 \times 3}(\mathbf{z}))$ --- local context
+    \item \textbf{Path 3}: $f_3 = \sigma(\text{Conv}_{3 \times 3}(\sigma(\text{Conv}_{3 \times 3}(\mathbf{z}))))$ --- deeper features
+\end{itemize}
+
+\subsection{Watermark Extraction}
+
+Given a (potentially attacked) watermarked latent $\tilde{\mathbf{z}}'$, we extract:
+\begin{align}
+    \hat{\mathbf{w}}_L &= D_L(\tilde{\mathbf{z}}'^{\text{low}}) \\
+    \hat{\mathbf{w}}_H &= D_H(\tilde{\mathbf{z}}'^{\text{high}})
+\end{align}
+
+The final watermark estimate is:
+\begin{equation}
+    \hat{\mathbf{w}} = \frac{\hat{\mathbf{w}}_L + \hat{\mathbf{w}}_H}{2}
+\end{equation}
+
+\subsection{Bit Recovery}
+
+For binary watermark messages, bits are recovered as:
+\begin{equation}
+    \hat{b}_i = \mathbb{1}[\hat{w}_i > 0]
+\end{equation}
+where $\mathbb{1}[\cdot]$ is the indicator function.
+
+\section{Training Objective}
+
+The model is trained end-to-end by minimizing a multi-component loss function:
+\begin{equation}
+    \mathcal{L}_{\text{total}} = \lambda_w \mathcal{L}_w + \lambda_{\text{cons}} \mathcal{L}_{\text{cons}} + \lambda_z \mathcal{L}_z + \lambda_{\text{rob}} \mathcal{L}_{\text{rob}}
+\end{equation}
+
+\subsection{Watermark Recovery Loss}
+
+Ensures accurate watermark extraction from both frequency bands:
+\begin{equation}
+    \mathcal{L}_w = \|\hat{\mathbf{w}}_L - \mathbf{w}\|_2^2 + \|\hat{\mathbf{w}}_H - \mathbf{w}\|_2^2
+\end{equation}
+
+\subsection{Cross-Band Consistency Loss}
+
+Enforces agreement between decoders for redundancy:
+\begin{equation}
+    \mathcal{L}_{\text{cons}} = \|\hat{\mathbf{w}}_L - \hat{\mathbf{w}}_H\|_2^2
+\end{equation}
+
+\subsection{Latent Preservation Loss}
+
+Minimizes distortion in the latent space:
+\begin{equation}
+    \mathcal{L}_z = \|\tilde{\mathbf{z}} - \mathbf{z}\|_2^2
+\end{equation}
+
+\subsection{Robustness Loss}
+
+Encourages watermark survival under attacks:
+\begin{equation}
+    \mathcal{L}_{\text{rob}} = \mathbb{E}_{\mathcal{A} \sim \mathcal{P}(\mathcal{A})}\left[\|\hat{\mathbf{w}}_L^{\mathcal{A}} - \mathbf{w}\|_2^2 + \|\hat{\mathbf{w}}_H^{\mathcal{A}} - \mathbf{w}\|_2^2\right]
+\end{equation}
+where $\mathcal{A}$ is an attack sampled from the attack distribution $\mathcal{P}(\mathcal{A})$, and $\hat{\mathbf{w}}^{\mathcal{A}}$ denotes the watermark extracted after applying attack $\mathcal{A}$.
+
+\section{Attack Modeling}
+
+We consider three categories of differentiable attacks during training:
+
+\subsection{Latent-Space Noise Attack}
+
+Additive Gaussian noise in latent space:
+\begin{equation}
+    \mathcal{A}_{\text{noise}}(\tilde{\mathbf{z}}) = \tilde{\mathbf{z}} + \eta, \quad \eta \sim \mathcal{N}(0, \sigma^2 \mathbf{I})
+\end{equation}
+where $\sigma \sim \mathcal{U}[\sigma_{\min}, \sigma_{\max}]$.
+
+\subsection{JPEG Compression Simulation}
+
+Simulated via down-sampling and up-sampling in image space:
+\begin{equation}
+    \mathcal{A}_{\text{JPEG}}(\tilde{\mathbf{z}}) = \mathcal{E}\left(\text{Upsample}\left(\text{Downsample}\left(\mathcal{D}(\tilde{\mathbf{z}}), s\right), \frac{1}{s}\right)\right)
+\end{equation}
+where $s \sim \mathcal{U}[0.5, 1.0]$ is the downsampling factor.
+
+\subsection{Resize-Crop Attack}
+
+Random cropping and resizing:
+\begin{equation}
+    \mathcal{A}_{\text{crop}}(\tilde{\mathbf{z}}) = \mathcal{E}\left(\text{Resize}\left(\text{Crop}\left(\mathcal{D}(\tilde{\mathbf{z}}), r\right), (H, W)\right)\right)
+\end{equation}
+where $r \sim \mathcal{U}[r_{\min}, r_{\max}]$ is the crop ratio.
+
+\section{Evaluation Metrics}
+
+\subsection{Image Quality Metrics}
+
+\subsubsection{Peak Signal-to-Noise Ratio (PSNR)}
+\begin{equation}
+    \text{PSNR} = 10 \cdot \log_{10}\left(\frac{R^2}{\text{MSE}}\right)
+\end{equation}
+where $R$ is the dynamic range and:
+\begin{equation}
+    \text{MSE} = \frac{1}{N}\sum_i(\tilde{x}_i - x_i)^2
+\end{equation}
+
+\subsubsection{Structural Similarity Index (SSIM)}
+\begin{equation}
+    \text{SSIM}(\mathbf{x}, \tilde{\mathbf{x}}) = \frac{(2\mu_x\mu_{\tilde{x}} + C_1)(2\sigma_{x\tilde{x}} + C_2)}{(\mu_x^2 + \mu_{\tilde{x}}^2 + C_1)(\sigma_x^2 + \sigma_{\tilde{x}}^2 + C_2)}
+\end{equation}
+where $\mu_x$, $\mu_{\tilde{x}}$ are local means, $\sigma_x^2$, $\sigma_{\tilde{x}}^2$ are local variances, $\sigma_{x\tilde{x}}$ is the local covariance, and $C_1$, $C_2$ are stability constants.
+
+\subsection{Watermark Accuracy}
+
+\subsubsection{Bit Accuracy}
+\begin{equation}
+    \text{Acc}_{\text{bit}} = \frac{1}{d_w}\sum_{i=1}^{d_w} \mathbb{1}[\hat{b}_i = b_i]
+\end{equation}
+where $b_i$ and $\hat{b}_i$ are the original and recovered bits respectively.
+
+\end{document}
