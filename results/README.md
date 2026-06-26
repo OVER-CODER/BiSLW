@@ -14,6 +14,7 @@ The following table presents a comparison of the watermarked latent space recons
 | **BiSLW (Ours)** | **37.40** | **0.91** | **9.0** | **0.311** | **0.98** |
 
 ![Qualitative Comparison](Final%20Results/figures/qualitative_comparison.png)
+
 *Figure 1: Qualitative comparison of original and watermarked reconstructions along with visual residual maps (scaled 10x for visibility).*
 
 ---
@@ -31,6 +32,7 @@ Evaluating downstream generation capabilities ensures that embedding watermarks 
 | **Regen (0.5 / 0.8)** | 0.96 / 0.92 | Watermark extraction accuracy after 50% and 80% diffusion denoising steps |
 
 ![Regeneration Robustness](Final%20Results/figures/regeneration_robustness.png)
+
 *Figure 2: Watermark recovery bit accuracy under generative diffusion regeneration steps at varying denoising steps.*
 
 ---
@@ -55,6 +57,7 @@ Watermark recovery bit accuracy is evaluated across diverse, non-differentiable 
 | **Combined Attack** | **0.98** | High |
 
 ![Robustness Tradeoff](Final%20Results/figures/bit_length_analysis/bit_accuracy_tradeoff.png)
+
 *Figure 3: Watermark bit extraction accuracy curves across different bit lengths and attack severities.*
 
 ---
@@ -73,6 +76,7 @@ Varying the DCT mask radius ($r$) determines the allocation of channels to low v
 | 0.35 | 0.96 | 0.87 | 36.95 |
 
 ![Mask Radius Ablation](Final%20Results/figures/ablation_analysis/mask_radius_accuracy.png)
+
 *Figure 4: Watermark extraction accuracy as a function of the mask radius, showing peak performance at r = 0.25.*
 
 ### 2. Alpha Embedding Strengths ($\alpha_L$, $\alpha_H$)
@@ -103,12 +107,14 @@ The following publication figures located under `results/Final Results/` validat
 Shows the 2D spatial layout of DCT coefficient modifications. The perturbation is localized strictly within the designated frequency boundaries, confirming that the splitter functions as expected without leakage.
 
 ![Spectral Perturbation](Final%20Results/figures/spectral_analysis/spectral_perturbation_combined.png)
+
 *Figure 5: Perturbation energy distribution in the low-frequency and high-frequency bands.*
 
 ### 2. DCT Energy Distribution
 Plots the radial average of the watermark signal power from the low-frequency DC term to the high-frequency boundaries. The curve demonstrates a controlled roll-off, keeping higher frequencies clean to prevent visual texturing.
 
 ![DCT Energy Distribution](Final%20Results/qualitative_results/dct_energy_distribution.png)
+
 *Figure 6: Power spectral density profile and radial energy distribution profile in frequency domain.*
 
 ---

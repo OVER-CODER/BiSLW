@@ -160,14 +160,6 @@ The following table summarizes the performance of the final BiSLW model compared
 | **Regen (0.5 / 0.8)** | - | **0.96 / 0.92** |
 | **Combined Attack Accuracy** | - | **0.98** |
 
-<div align="center">
-  <img src="results/Final%20Results/figures/regeneration_robustness.png" width="45%" />
-  <img src="results/Final%20Results/figures/qualitative_comparison.png" width="45%" />
-</div>
-<p align="center">
-  <em>Figure 4: Left - Watermark recovery accuracy curves under increasing diffusion regeneration steps. Right - Qualitative comparison showing original, watermarked, and difference maps.</em>
-</p>
-
 ---
 
 ## J. Citation

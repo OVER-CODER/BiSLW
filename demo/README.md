@@ -2,9 +2,6 @@
 
 This directory contains the code to run the interactive graphical demonstration and CLI inference scripts for the Bi-Spectral Latent Watermarking (BiSLW) system.
 
-![BiSLW Watermarking Pipeline](https://raw.githubusercontent.com/username/repo/main/results/Final%20Results/figures/bislw_watermarking_pipeline_diagram.jpg)
-*Figure 1: Step-by-step watermarking pipeline demonstration map (local path: [bislw_watermarking_pipeline_diagram.jpg](../results/Final%20Results/figures/bislw_watermarking_pipeline_diagram.jpg)).*
-
 ---
 
 ## A. Demo Capabilities
