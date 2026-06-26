@@ -8,6 +8,9 @@ This repository contains the official implementation of **Bi-Spectral Latent Wat
 
 Generative diffusion models require robust provenance and copyright tracking solutions. BiSLW addresses this by performing watermarking directly in the latent space of a pretrained Autoencoder (VAE) via Discrete Cosine Transform (DCT) spectral decomposition. By splitting the latent space into low-frequency and high-frequency components, BiSLW embeds watermark signatures in dual-bands with varying strengths. High-frequency signatures guarantee imperceptibility and robustness against high-frequency noise, while low-frequency signatures protect against aggressive spatial compression and blur. This dual-band strategy, combined with a cross-band consistency loss, achieves state-of-the-art visual quality, extreme robustness to diverse post-processing attacks, and exceptional resilience against generative diffusion regeneration.
 
+![BiSLW Framework Architecture](results/Final%20Results/figures/BiSLW_Framework_Architecture.jpg)
+*Figure 1: Overall BiSLW framework architecture, illustrating the joint training of the spectral latent splitter, asymmetric dual-band encoders, and the unified extractor network.*
+
 ---
 
 ## B. Method Overview
@@ -42,7 +45,9 @@ The embedding pipeline runs as follows:
 2. **DCT Spectral Split**: A 2D orthonormal DCT-II transformation splits $\mathbf{z}$ into low-frequency $\mathbf{z}^{\text{low}}$ (the top-left quadrant defined by mask radius $r = 0.25$) and high-frequency $\mathbf{z}^{\text{high}}$ components.
 3. **Dual-Band Watermark Embedding**: The 32-bit signature $\mathbf{w}$ is embedded in the low-frequency band with strength $\alpha_L = 0.8$ and the high-frequency band with strength $\alpha_H = 0.3$.
 4. **Spectral Recombination & Decoding**: The modified bands are recombined, transformed back via Inverse DCT-II to obtain the watermarked latent $\tilde{\mathbf{z}}$, and decoded to image space.
-5. **Robust Decoding**: A dual-band extractor network takes the latent coefficients of an attacked image and reconstructs the original watermark signature from both bands.
+
+![Spectral Decomposition of Latent Space](results/Final%20Results/figures/spectral_decomposition_latent_space.jpg)
+*Figure 2: Spectral decomposition mapping z-space latents to 2D DCT spatial-frequency quadrants, separating high-frequency textures from low-frequency structural components.*
 
 ---
 
@@ -53,6 +58,9 @@ The embedding pipeline runs as follows:
 *   **Cross-Band Consistency Loss**: Regularization constraint enforcing feature alignment across bands during training, raising extraction accuracy.
 *   **Robust Extraction**: Differentiable training pipeline utilizing proxy attacks to guarantee watermark retrieval under aggressive lossy transformations.
 *   **Regeneration Robustness**: High detection rate even after the watermarked image is decoded, passed through diffusion denoising steps, and regenerated.
+
+![Spectral Perturbation Maps](results/Final%20Results/figures/spectral_analysis/spectral_perturbation_combined.png)
+*Figure 3: Combined spectral perturbation maps illustrating the magnitude and spatial distribution of frequency changes across latent channels.*
 
 ---
 
@@ -82,7 +90,6 @@ Clone the repository and install the dependencies:
 ```bash
 pip install -r requirements.txt
 ```
-*Note: Requirements include `torch`, `torchvision`, `diffusers`, `pyyaml`, `tqdm`, `pillow`, `matplotlib`, and `streamlit`.*
 
 ---
 
@@ -152,6 +159,14 @@ The following table summarizes the performance of the final BiSLW model compared
 | **Latent Shift** | - | **0.011** |
 | **Regen (0.5 / 0.8)** | - | **0.96 / 0.92** |
 | **Combined Attack Accuracy** | - | **0.98** |
+
+<div align="center">
+  <img src="results/Final%20Results/figures/regeneration_robustness.png" width="45%" />
+  <img src="results/Final%20Results/figures/qualitative_comparison.png" width="45%" />
+</div>
+<p align="center">
+  <em>Figure 4: Left - Watermark recovery accuracy curves under increasing diffusion regeneration steps. Right - Qualitative comparison showing original, watermarked, and difference maps.</em>
+</p>
 
 ---
 

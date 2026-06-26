@@ -2,6 +2,9 @@
 
 This directory contains the code to run the interactive graphical demonstration and CLI inference scripts for the Bi-Spectral Latent Watermarking (BiSLW) system.
 
+![BiSLW Watermarking Pipeline](https://raw.githubusercontent.com/username/repo/main/results/Final%20Results/figures/bislw_watermarking_pipeline_diagram.jpg)
+*Figure 1: Step-by-step watermarking pipeline demonstration map (local path: [bislw_watermarking_pipeline_diagram.jpg](../results/Final%20Results/figures/bislw_watermarking_pipeline_diagram.jpg)).*
+
 ---
 
 ## A. Demo Capabilities
@@ -13,6 +16,9 @@ The Streamlit web demo is designed to visually demonstrate the entire embedding,
 4. **Attacked Image**: Apply simulated image distortions on the watermarked image in real time.
 5. **Recovered Watermark**: View the comparison between the original 32-bit signature and the reconstructed signature from the low-frequency and high-frequency components.
 6. **Metrics**: Read live structural similarity and recovery statistics.
+
+![Example Qualitative Demo Outputs](../results/Final%20Results/qualitative_results/comprehensive_qualitative.png)
+*Figure 2: Qualitative preview of original images, watermarked images, and differences (boosted for visibility) generated during evaluation showcase.*
 
 ---
 
@@ -133,5 +139,5 @@ Input Image
 
 ## H. Limitations
 
-*   **Rotation and Crop Attacks**: Spatial transformations like rotation and crop alter the grid alignment of latent coefficients. While BiSLW retains moderate detection, severe crops ($&gt;15\%$) or large rotation angles ($&gt;15^\circ$) degrade bit accuracy due to the spatial sensitivity of the VAE encoder.
+*   **Rotation and Crop Attacks**: Spatial transformations like rotation and crop alter the grid alignment of latent coefficients. While BiSLW retains moderate detection, severe crops ($>15\%$) or large rotation angles ($>15^\circ$) degrade bit accuracy due to the spatial sensitivity of the VAE encoder.
 *   **VAE CEILING**: Visual distortion and extraction performance are inherently bound by the reconstruction capability of the underlying Stable Diffusion v1.5 VAE.
