@@ -165,11 +165,14 @@ The following table summarizes the performance of the final BiSLW model compared
 ## J. Citation
 
 ```bibtex
-@article{bislw2026,
-  title={Bi-Spectral Latent Watermarking for Generative Diffusion Models},
-  author={Anonymous Authors},
-  journal={ECCV Submission},
-  year={2026}
+@misc{pandit2026bislwbispectrallatentwatermarking,
+      title={BiSLW: Bi-Spectral Latent Watermarking for Generative Diffusion Models}, 
+      author={Aryan Pandit},
+      year={2026},
+      eprint={2607.02643},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2607.02643}, 
 }
 ```
 
