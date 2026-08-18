@@ -1,4 +1,4 @@
-# BiSLW: Bi-Spectral Latent Watermarking for Generative Diffusion Models
+# [ECCV 2026] BiSLW: Bi-Spectral Latent Watermarking for Generative Diffusion Models
 
 This repository contains the official implementation of **Bi-Spectral Latent Watermarking (BiSLW)**, a robust, high-fidelity latent-space watermarking framework designed for generative diffusion models.
 
